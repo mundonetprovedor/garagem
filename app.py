@@ -101,7 +101,9 @@ def _init_db():
             year INTEGER NOT NULL, make TEXT NOT NULL, model TEXT NOT NULL,
             vin TEXT, image TEXT, purchase_date TEXT,
             placa TEXT, renavam TEXT, condutor TEXT, chassi TEXT,
-            licenciamento TEXT, ipva TEXT,
+            licenciamento TEXT, ipva TEXT, combustivel TEXT, crv TEXT,
+            crlv TEXT, seguro TEXT, vistoria_data TEXT, vistoria_validade TEXT,
+            km_atual INTEGER,
             created_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
@@ -219,9 +221,9 @@ def _init_db():
     # Migração: documentos e identificação do veículo (placa, renavam, etc.)
     try:
         cols = [r['name'] for r in conn.execute("PRAGMA table_info(cars)").fetchall()]
-        for col in ('placa', 'renavam', 'condutor', 'chassi', 'licenciamento', 'ipva'):
+        for col in ('placa', 'renavam', 'condutor', 'chassi', 'licenciamento', 'ipva', 'combustivel', 'crv', 'crlv', 'seguro', 'vistoria_data', 'vistoria_validade', 'km_atual'):
             if col not in cols:
-                conn.execute(f"ALTER TABLE cars ADD COLUMN {col} TEXT")
+                conn.execute(f"ALTER TABLE cars ADD COLUMN {col} {'INTEGER' if col=='km_atual' else 'TEXT'}")
         conn.commit()
     except Exception as e:
         print(f"Migração de documentos do veículo: {e}")
@@ -694,12 +696,17 @@ def add_car():
     placa=request.form.get('placa','').strip(); renavam=request.form.get('renavam','').strip()
     condutor=request.form.get('condutor','').strip(); chassi=request.form.get('chassi','').strip()
     lic=request.form.get('licenciamento','').strip(); ipva=request.form.get('ipva','').strip()
+    combustivel=request.form.get('combustivel','').strip(); crv=request.form.get('crv','').strip()
+    crlv=request.form.get('crlv','').strip(); seguro=request.form.get('seguro','').strip()
+    vis_data=request.form.get('vistoria_data','').strip(); vis_val=request.form.get('vistoria_validade','').strip()
+    km=request.form.get('km_atual','').strip()
     if not year or not make or not model: return jsonify({'error':'Ano, marca e modelo obrigatórios'}), 400
     image = save_upload(request.files.get('image'), 'cars') if 'image' in request.files else None
     conn = get_db()
-    cur = conn.execute('INSERT INTO cars (user_id,year,make,model,vin,image,purchase_date,placa,renavam,condutor,chassi,licenciamento,ipva) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    cur = conn.execute('INSERT INTO cars (user_id,year,make,model,vin,image,purchase_date,placa,renavam,condutor,chassi,licenciamento,ipva,combustivel,crv,crlv,seguro,vistoria_data,vistoria_validade,km_atual) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                        (g.user['id'], int(year), make, model, vin or None, image, pd or None,
-                        placa or None, renavam or None, condutor or None, chassi or None, lic or None, ipva or None))
+                        placa or None, renavam or None, condutor or None, chassi or None, lic or None, ipva or None,
+                        combustivel or None, crv or None, crlv or None, seguro or None, vis_data or None, vis_val or None, int(km) if km.isdigit() else None))
     conn.commit()
     car = dict(conn.execute('SELECT * FROM cars WHERE id=?',(cur.lastrowid,)).fetchone())
     conn.close()
@@ -726,14 +733,18 @@ def update_car(cid):
     placa=request.form.get('placa',car['placa'] or '').strip(); renavam=request.form.get('renavam',car['renavam'] or '').strip()
     condutor=request.form.get('condutor',car['condutor'] or '').strip(); chassi=request.form.get('chassi',car['chassi'] or '').strip()
     lic=request.form.get('licenciamento',car['licenciamento'] or '').strip(); ipva=request.form.get('ipva',car['ipva'] or '').strip()
+    combustivel=request.form.get('combustivel',car['combustivel'] or '').strip(); crv=request.form.get('crv',car['crv'] or '').strip()
+    crlv=request.form.get('crlv',car['crlv'] or '').strip(); seguro=request.form.get('seguro',car['seguro'] or '').strip()
+    vis_data=request.form.get('vistoria_data',car['vistoria_data'] or '').strip(); vis_val=request.form.get('vistoria_validade',car['vistoria_validade'] or '').strip()
+    km=str(request.form.get('km_atual',car['km_atual'] if car['km_atual'] is not None else '')).strip()
     image = car['image']
     if 'image' in request.files and request.files['image'].filename:
         if car['image']:
             p = os.path.join(app.config['UPLOAD_FOLDER'],'cars',car['image'])
             if os.path.exists(p): os.remove(p)
         image = save_upload(request.files['image'],'cars')
-    conn.execute('UPDATE cars SET year=?,make=?,model=?,vin=?,image=?,purchase_date=?,placa=?,renavam=?,condutor=?,chassi=?,licenciamento=?,ipva=? WHERE id=?',
-                 (int(year),make,model,vin or None,image,pd or None,placa or None,renavam or None,condutor or None,chassi or None,lic or None,ipva or None,cid))
+    conn.execute('UPDATE cars SET year=?,make=?,model=?,vin=?,image=?,purchase_date=?,placa=?,renavam=?,condutor=?,chassi=?,licenciamento=?,ipva=?,combustivel=?,crv=?,crlv=?,seguro=?,vistoria_data=?,vistoria_validade=?,km_atual=? WHERE id=?',
+                 (int(year),make,model,vin or None,image,pd or None,placa or None,renavam or None,condutor or None,chassi or None,lic or None,ipva or None,combustivel or None,crv or None,crlv or None,seguro or None,vis_data or None,vis_val or None,int(km) if km.isdigit() else None,cid))
     conn.commit()
     updated = dict(conn.execute('SELECT * FROM cars WHERE id=?',(cid,)).fetchone())
     conn.close()
