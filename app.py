@@ -100,6 +100,8 @@ def _init_db():
             user_id INTEGER NOT NULL,
             year INTEGER NOT NULL, make TEXT NOT NULL, model TEXT NOT NULL,
             vin TEXT, image TEXT, purchase_date TEXT,
+            placa TEXT, renavam TEXT, condutor TEXT, chassi TEXT,
+            licenciamento TEXT, ipva TEXT,
             created_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
@@ -214,6 +216,15 @@ def _init_db():
             conn.commit()
     except Exception as e:
         print(f"Migração de CHECK de Inspection: {e}")
+    # Migração: documentos e identificação do veículo (placa, renavam, etc.)
+    try:
+        cols = [r['name'] for r in conn.execute("PRAGMA table_info(cars)").fetchall()]
+        for col in ('placa', 'renavam', 'condutor', 'chassi', 'licenciamento', 'ipva'):
+            if col not in cols:
+                conn.execute(f"ALTER TABLE cars ADD COLUMN {col} TEXT")
+        conn.commit()
+    except Exception as e:
+        print(f"Migração de documentos do veículo: {e}")
     # Migração: lembretes ganharam um modo baseado em tempo, então interval_miles
     # não é mais o único intervalo. Linhas anteriores a 0.3.2 são todas por quilometragem.
     try:
@@ -646,14 +657,14 @@ def get_cars():
     conn = get_db()
     if g.user['role'] == 'admin':
         if q:
-            cars = conn.execute("SELECT c.*, u.display_name as owner_name FROM cars c JOIN users u ON c.user_id=u.id WHERE c.year LIKE ? OR c.make LIKE ? OR c.model LIKE ? OR c.vin LIKE ? ORDER BY c.created_at DESC",
-                (f'%{q}%',f'%{q}%',f'%{q}%',f'%{q}%')).fetchall()
+            cars = conn.execute("SELECT c.*, u.display_name as owner_name FROM cars c JOIN users u ON c.user_id=u.id WHERE c.year LIKE ? OR c.make LIKE ? OR c.model LIKE ? OR c.vin LIKE ? OR c.placa LIKE ? OR c.chassi LIKE ? ORDER BY c.created_at DESC",
+                (f'%{q}%',f'%{q}%',f'%{q}%',f'%{q}%',f'%{q}%',f'%{q}%')).fetchall()
         else:
             cars = conn.execute('SELECT c.*, u.display_name as owner_name FROM cars c JOIN users u ON c.user_id=u.id ORDER BY c.created_at DESC').fetchall()
     else:
         if q:
-            cars = conn.execute("SELECT * FROM cars WHERE user_id=? AND (year LIKE ? OR make LIKE ? OR model LIKE ? OR vin LIKE ?) ORDER BY created_at DESC",
-                (g.user['id'],f'%{q}%',f'%{q}%',f'%{q}%',f'%{q}%')).fetchall()
+            cars = conn.execute("SELECT * FROM cars WHERE user_id=? AND (year LIKE ? OR make LIKE ? OR model LIKE ? OR vin LIKE ? OR placa LIKE ? OR chassi LIKE ?) ORDER BY created_at DESC",
+                (g.user['id'],f'%{q}%',f'%{q}%',f'%{q}%',f'%{q}%',f'%{q}%',f'%{q}%')).fetchall()
         else:
             cars = conn.execute('SELECT * FROM cars WHERE user_id=? ORDER BY created_at DESC',(g.user['id'],)).fetchall()
     result = []
@@ -680,11 +691,15 @@ def add_car():
     year=request.form.get('year'); make=request.form.get('make','').strip()
     model=request.form.get('model','').strip(); vin=request.form.get('vin','').strip()
     pd=request.form.get('purchase_date','').strip()
+    placa=request.form.get('placa','').strip(); renavam=request.form.get('renavam','').strip()
+    condutor=request.form.get('condutor','').strip(); chassi=request.form.get('chassi','').strip()
+    lic=request.form.get('licenciamento','').strip(); ipva=request.form.get('ipva','').strip()
     if not year or not make or not model: return jsonify({'error':'Ano, marca e modelo obrigatórios'}), 400
     image = save_upload(request.files.get('image'), 'cars') if 'image' in request.files else None
     conn = get_db()
-    cur = conn.execute('INSERT INTO cars (user_id,year,make,model,vin,image,purchase_date) VALUES (?,?,?,?,?,?,?)',
-                       (g.user['id'], int(year), make, model, vin or None, image, pd or None))
+    cur = conn.execute('INSERT INTO cars (user_id,year,make,model,vin,image,purchase_date,placa,renavam,condutor,chassi,licenciamento,ipva) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                       (g.user['id'], int(year), make, model, vin or None, image, pd or None,
+                        placa or None, renavam or None, condutor or None, chassi or None, lic or None, ipva or None))
     conn.commit()
     car = dict(conn.execute('SELECT * FROM cars WHERE id=?',(cur.lastrowid,)).fetchone())
     conn.close()
@@ -708,14 +723,17 @@ def update_car(cid):
     year=request.form.get('year',car['year']); make=request.form.get('make',car['make']).strip()
     model=request.form.get('model',car['model']).strip(); vin=request.form.get('vin',car['vin'] or '').strip()
     pd=request.form.get('purchase_date',car['purchase_date'] or '').strip()
+    placa=request.form.get('placa',car['placa'] or '').strip(); renavam=request.form.get('renavam',car['renavam'] or '').strip()
+    condutor=request.form.get('condutor',car['condutor'] or '').strip(); chassi=request.form.get('chassi',car['chassi'] or '').strip()
+    lic=request.form.get('licenciamento',car['licenciamento'] or '').strip(); ipva=request.form.get('ipva',car['ipva'] or '').strip()
     image = car['image']
     if 'image' in request.files and request.files['image'].filename:
         if car['image']:
             p = os.path.join(app.config['UPLOAD_FOLDER'],'cars',car['image'])
             if os.path.exists(p): os.remove(p)
         image = save_upload(request.files['image'],'cars')
-    conn.execute('UPDATE cars SET year=?,make=?,model=?,vin=?,image=?,purchase_date=? WHERE id=?',
-                 (int(year),make,model,vin or None,image,pd or None,cid))
+    conn.execute('UPDATE cars SET year=?,make=?,model=?,vin=?,image=?,purchase_date=?,placa=?,renavam=?,condutor=?,chassi=?,licenciamento=?,ipva=? WHERE id=?',
+                 (int(year),make,model,vin or None,image,pd or None,placa or None,renavam or None,condutor or None,chassi or None,lic or None,ipva or None,cid))
     conn.commit()
     updated = dict(conn.execute('SELECT * FROM cars WHERE id=?',(cid,)).fetchone())
     conn.close()
