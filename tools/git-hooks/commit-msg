@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Aplica as convenções de commit do CONTRIBUTING.md.
+
+Aponte um clone para este diretório com:
+
+    git config core.hooksPath tools/git-hooks
+
+Uma worktree ou um clone novo precisa disso de novo, senão o hook simplesmente não
+roda.
+
+Recusado:
+  * qualquer atribuição de ferramenta de IA: o histórico é do mantenedor, e o
+    aviso de IA no README declara a ferramenta uma vez para o repositório inteiro
+  * travessões (dois-pontos, vírgula ou ponto final os substituem)
+  * um assunto que não é Conventional Commit, termina com ponto, ou passa de
+    72 caracteres
+  * um corpo com mais de 100 palavras
+
+Aviso: um parágrafo do corpo quebrado em várias linhas.
+
+Merges, reverts e commits fixup!/squash!/amend! são isentos das regras de assunto,
+nunca da regra de atribuição.
+"""
+import re
+import sys
+
+TYPES = ("feat", "fix", "perf", "refactor", "docs", "build", "ci", "test",
+         "style", "chore", "revert")
+# Minúscula após os dois-pontos, mas um acrônimo (IMAP, OAuth) pode iniciar.
+SUBJECT_RE = re.compile(r"^(%s)(\([a-z0-9._/-]+\))?!?: (?![A-Z][a-z])\S.*$" % "|".join(TYPES))
+EXEMPT_RE = re.compile(r'^(Merge |Revert "|fixup! |squash! |amend! )')
+ATTRIBUTION = [
+    (re.compile(r"^co-authored-by:.*(claude|anthropic|openai|chatgpt|copilot|gemini|\bai\b)", re.I | re.M),
+     "um trailer Co-Authored-By de IA"),
+    (re.compile(r"noreply@anthropic\.com", re.I), "um endereço da Anthropic"),
+    (re.compile(r"generated with .*(claude|ai\b)", re.I), 'um rodapé "Generated with"'),
+    (re.compile(r"^claude-session:", re.I | re.M), "uma linha Claude-Session"),
+    (re.compile(r"\U0001F916"), "o rodapé com emoji de robô"),
+]
+
+
+def fail(message, *hints):
+    print(f"commit-msg: {message}", file=sys.stderr)
+    for hint in hints:
+        print(f"            {hint}", file=sys.stderr)
+    sys.exit(1)
+
+
+def main():
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        raw = handle.read()
+    # Tudo abaixo da linha de tesoura do git é o diff verboso, não a mensagem.
+    raw = raw.split("# ------------------------ >8 ------------------------")[0]
+    lines = [ln.rstrip() for ln in raw.splitlines() if not ln.startswith("#")]
+    while lines and not lines[0]:
+        lines.pop(0)
+    if not lines:
+        fail("a mensagem está vazia.")
+
+    subject, body = lines[0], "\n".join(lines[1:]).strip()
+    message = subject + "\n" + body
+
+    for pattern, what in ATTRIBUTION:
+        if pattern.search(message):
+            fail(f"a mensagem carrega {what}.",
+                 "Commits são do próprio mantenedor. O aviso de IA do README declara",
+                 "a ferramenta uma vez; uma pessoa ainda é creditada com Co-Authored-By.")
+    if "—" in message:
+        fail("a mensagem contém um travessão.", "Use dois-pontos, vírgula ou ponto final.")
+
+    if EXEMPT_RE.match(subject):
+        sys.exit(0)
+    if not SUBJECT_RE.match(subject):
+        fail(f"o assunto não é um Conventional Commit: {subject!r}",
+             "Formato: tipo(área): resumo, minúscula após os dois-pontos, imperativo.",
+             "Tipos: " + ", ".join(TYPES))
+    if subject.endswith("."):
+        fail("o assunto termina com ponto final.")
+    if len(subject) > 72:
+        fail(f"o assunto tem {len(subject)} caracteres; o limite é 72, tente perto de 50.")
+
+    if body:
+        words = len(body.split())
+        if words > 100:
+            fail(f"o corpo tem {words} palavras; o limite é 100.",
+                 "Passando disso, o detalhe pertence a docs/ ou CHANGELOG.md,",
+                 "ou o commit pede divisão.")
+        # O GitHub mantém cada quebra de linha do corpo, então texto quebrado em 72
+        # quebra uma segunda vez no celular. Listas e blocos com recuo são ok.
+        for para in re.split(r"\n\s*\n", body):
+            rows = [r for r in para.splitlines() if r.strip()]
+            if len(rows) > 1 and not any(r.lstrip()[:1] in "-*#0123456789" or r.startswith(" ") for r in rows):
+                print("commit-msg: aviso: um parágrafo do corpo está quebrado em "
+                      f"{len(rows)} linhas. Escreva cada parágrafo em uma linha.", file=sys.stderr)
+                break
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

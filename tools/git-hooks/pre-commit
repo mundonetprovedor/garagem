@@ -1,0 +1,10 @@
+#!/bin/sh
+# Recusa commitar CLAUDE.md ou .claude/, que são apenas locais: listados em
+# .git/info/exclude, nunca commitados (veja CONTRIBUTING.md, "Commits").
+set -e
+
+if git diff --cached --name-only | grep -qE '^(CLAUDE\.md$|\.claude/)'; then
+    echo "pre-commit: CLAUDE.md e .claude/ são apenas locais e não devem ser commitados." >&2
+    echo "            git rm -r --cached CLAUDE.md .claude" >&2
+    exit 1
+fi

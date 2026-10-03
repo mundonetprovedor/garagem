@@ -1,0 +1,33 @@
+#!/bin/sh
+# Última linha de defesa antes de publicar qualquer coisa: nenhum commit ou tag
+# anotada enviada pode carregar atribuição de IA. Um trailer escondido coloca a ferramenta
+# no painel de Contribuidores do GitHub, e removê-lo depois significa reescrever
+# o histórico. Veja CONTRIBUTING.md, "Commits".
+set -e
+zero=0000000000000000000000000000000000000000
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue
+    if [ "$remote_sha" = "$zero" ]; then
+        range="$local_sha --not --remotes"
+    else
+        range="$remote_sha..$local_sha"
+    fi
+    # shellcheck disable=SC2086
+    hits=$(git log --format='%H %an <%ae>%n%B' $range 2>/dev/null \
+           | grep -inE 'co-authored-by:.*(claude|anthropic)|noreply@anthropic|claude-session:|generated with .*claude' || true)
+    if [ -n "$hits" ]; then
+        echo "pre-push: $remote_ref: atribuição de IA nos commits enviados:" >&2
+        echo "$hits" | sed 's/^/          /' >&2
+        status=1
+    fi
+    case "$local_ref" in
+        refs/tags/*)
+            if git cat-file -t "$local_sha" | grep -q tag &&
+               git cat-file -p "$local_sha" | grep -iqE 'claude|anthropic'; then
+                echo "pre-push: $local_ref: a mensagem da tag menciona a ferramenta." >&2
+                status=1
+            fi ;;
+    esac
+done
+exit $status
