@@ -7,8 +7,10 @@ venv/
 *.db-shm
 static/uploads/cars/*
 static/uploads/maintenance/*
+static/uploads/vistorias/*
 !static/uploads/cars/.gitkeep
 !static/uploads/maintenance/.gitkeep
+!static/uploads/vistorias/.gitkeep
 .env
 temp/
 docker-compose.override.yml

@@ -9,7 +9,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-RUN mkdir -p /data/uploads/cars /data/uploads/maintenance
+RUN mkdir -p /data/uploads/cars /data/uploads/maintenance /data/uploads/vistorias
 ENV DATABASE_PATH=/data/garage_logbook.db
 ENV UPLOAD_FOLDER=/data/uploads
 ENV SECRET_KEY=change-me-in-docker-compose

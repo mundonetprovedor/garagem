@@ -116,12 +116,44 @@ def _init_db():
             created_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE
         );
+        CREATE TABLE IF NOT EXISTS fuelups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            car_id INTEGER NOT NULL, fuel_date TEXT NOT NULL,
+            liters REAL, price REAL, odometer INTEGER,
+            parts_vendor TEXT, driver TEXT, notes TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS infractions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            car_id INTEGER NOT NULL, infraction_date TEXT NOT NULL,
+            description TEXT, value REAL, points INTEGER,
+            status TEXT NOT NULL DEFAULT 'Pendente', notes TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE
+        );
         CREATE TABLE IF NOT EXISTS maintenance_images (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             maintenance_id INTEGER NOT NULL, filename TEXT NOT NULL,
             original_name TEXT, file_type TEXT NOT NULL DEFAULT 'image',
             created_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (maintenance_id) REFERENCES maintenance(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS vistorias (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            car_id INTEGER NOT NULL,
+            vistoria_data TEXT NOT NULL,
+            validade TEXT,
+            observacao TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS vistoria_images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vistoria_id INTEGER NOT NULL, filename TEXT NOT NULL,
+            original_name TEXT, file_type TEXT NOT NULL DEFAULT 'image',
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (vistoria_id) REFERENCES vistorias(id) ON DELETE CASCADE
         );
         CREATE TABLE IF NOT EXISTS service_reminders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -227,6 +259,33 @@ def _init_db():
         conn.commit()
     except Exception as e:
         print(f"Migração de documentos do veículo: {e}")
+    # Migração: a vistoria deixou de ser um par de colunas em cars e passou a ser
+    # histórico (1:N), para registrar data e imagens a cada nova vistoria.
+    # O par legado é copiado para a tabela vistorias e então zerado em cars.
+    try:
+        pend = conn.execute("SELECT id, vistoria_data, vistoria_validade FROM cars "
+                            "WHERE (vistoria_data IS NOT NULL AND vistoria_data != '') "
+                            "OR (vistoria_validade IS NOT NULL AND vistoria_validade != '')").fetchall()
+        moved = []
+        for r in pend:
+            if conn.execute('SELECT COUNT(*) as c FROM vistorias WHERE car_id=?', (r['id'],)).fetchone()['c']:
+                continue
+            conn.execute('INSERT INTO vistorias (car_id, vistoria_data, validade) VALUES (?,?,?)',
+                         (r['id'], r['vistoria_data'] or r['vistoria_validade'], r['vistoria_validade']))
+            moved.append(r['id'])
+        if moved:
+            conn.execute('UPDATE cars SET vistoria_data=NULL, vistoria_validade=NULL WHERE id IN (%s)' % ','.join('?'*len(moved)), moved)
+            print(f"Migração: {len(moved)} vistoria(s) movida(s) para o histórico")
+        conn.commit()
+    except Exception as e:
+        print(f"Migração de vistorias: {e}")
+    try:
+        mcols = [r['name'] for r in conn.execute("PRAGMA table_info(maintenance)").fetchall()]
+        if 'driver' not in mcols:
+            conn.execute("ALTER TABLE maintenance ADD COLUMN driver TEXT")
+        conn.commit()
+    except Exception as e:
+        print(f"Migração de driver: {e}")
     # Migração: lembretes ganharam um modo baseado em tempo, então interval_miles
     # não é mais o único intervalo. Linhas anteriores a 0.3.2 são todas por quilometragem.
     try:
@@ -255,6 +314,22 @@ def save_upload(file, subfolder):
 def get_file_type(filename):
     if filename and filename.rsplit('.',1)[1].lower() == 'pdf': return 'document'
     return 'image'
+
+def latest_vistoria(conn, car_id, legacy_data=None, legacy_validade=None):
+    """(data, validade) da vistoria mais recente do veículo.
+
+    A validade vem da vistoria mais recente que tiver uma; se o veículo ainda não
+    tem vistorias no histórico, cai para o par legado gravado em cars.
+    """
+    row = conn.execute('SELECT vistoria_data, validade FROM vistorias WHERE car_id=? ORDER BY vistoria_data DESC, id DESC LIMIT 1',
+                       (car_id,)).fetchone()
+    if not row: return legacy_data, legacy_validade
+    validade = row['validade']
+    if not validade:
+        alt = conn.execute("SELECT validade FROM vistorias WHERE car_id=? AND validade IS NOT NULL AND validade!='' "
+                           "ORDER BY vistoria_data DESC, id DESC LIMIT 1", (car_id,)).fetchone()
+        validade = alt['validade'] if alt else None
+    return row['vistoria_data'], validade
 
 def get_user_perms(user):
     """Obtém as permissões efetivas de um usuário."""
@@ -683,6 +758,21 @@ def get_cars():
         c['reminders'] = rems[:3]
         c['reminders_total'] = len(rems)
         c['reminders_due'] = sum(1 for r in rems if r['status'] in ('overdue','due_soon'))
+        # Vistoria vem do histórico (a mais recente), não mais de colunas fixas em cars
+        c['vistoria_data'], c['vistoria_validade'] = latest_vistoria(conn, c['id'], c.get('vistoria_data'), c.get('vistoria_validade'))
+        # Saúde do veículo: críticos primeiro, depois alertas, senão OK
+        from datetime import date as _date
+        today = _date.today()
+        dates = [c.get(k) for k in ('licenciamento','ipva','crlv','seguro','vistoria_validade')]
+        dates = [d for d in dates if d]
+        overdue_doc = any(d < today.isoformat() for d in dates)
+        due_doc = any(0 <= (_date.fromisoformat(d) - today).days <= 30 for d in dates)
+        overdue_rem = any(r['status'] == 'overdue' for r in rems)
+        due_soon_rem = any(r['status'] == 'due_soon' for r in rems)
+        if overdue_doc or overdue_rem: c['health'] = 'Crítico'
+        elif due_doc or due_soon_rem or c['reminders_due']: c['health'] = 'Atenção'
+        else: c['health'] = 'OK'
+        c['infractions_open'] = conn.execute("SELECT COUNT(*) as c FROM infractions WHERE car_id=? AND status='Pendente'",(c['id'],)).fetchone()['c']
         result.append(c)
     conn.close()
     return jsonify(result)
@@ -706,9 +796,14 @@ def add_car():
     cur = conn.execute('INSERT INTO cars (user_id,year,make,model,vin,image,purchase_date,placa,renavam,condutor,chassi,licenciamento,ipva,combustivel,crv,crlv,seguro,vistoria_data,vistoria_validade,km_atual) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                        (g.user['id'], int(year), make, model, vin or None, image, pd or None,
                         placa or None, renavam or None, condutor or None, chassi or None, lic or None, ipva or None,
-                        combustivel or None, crv or None, crlv or None, seguro or None, vis_data or None, vis_val or None, int(km) if km.isdigit() else None))
+                        combustivel or None, crv or None, crlv or None, seguro or None, None, None, int(km) if km.isdigit() else None))
+    # Vistoria enviada junto do cadastro vira a primeira linha do histórico
+    if vis_data or vis_val:
+        conn.execute('INSERT INTO vistorias (car_id,vistoria_data,validade) VALUES (?,?,?)',
+                     (cur.lastrowid, vis_data or vis_val, vis_val or None))
     conn.commit()
     car = dict(conn.execute('SELECT * FROM cars WHERE id=?',(cur.lastrowid,)).fetchone())
+    car['vistoria_data'], car['vistoria_validade'] = latest_vistoria(conn, car['id'], None, None)
     conn.close()
     return jsonify(car), 201
 
@@ -717,9 +812,12 @@ def add_car():
 def get_car(cid):
     conn = get_db()
     car = can_access_car(conn, cid, g.user)
+    if not car:
+        conn.close(); return jsonify({'error':'Não encontrado'}), 404
+    car = dict(car)
+    car['vistoria_data'], car['vistoria_validade'] = latest_vistoria(conn, cid, car.get('vistoria_data'), car.get('vistoria_validade'))
     conn.close()
-    if not car: return jsonify({'error':'Não encontrado'}), 404
-    return jsonify(dict(car))
+    return jsonify(car)
 
 @app.route('/api/cars/<int:cid>', methods=['PUT'])
 @perm_required('can_edit_cars')
@@ -735,7 +833,7 @@ def update_car(cid):
     lic=request.form.get('licenciamento',car['licenciamento'] or '').strip(); ipva=request.form.get('ipva',car['ipva'] or '').strip()
     combustivel=request.form.get('combustivel',car['combustivel'] or '').strip(); crv=request.form.get('crv',car['crv'] or '').strip()
     crlv=request.form.get('crlv',car['crlv'] or '').strip(); seguro=request.form.get('seguro',car['seguro'] or '').strip()
-    vis_data=request.form.get('vistoria_data',car['vistoria_data'] or '').strip(); vis_val=request.form.get('vistoria_validade',car['vistoria_validade'] or '').strip()
+    # Vistoria não faz mais parte do cadastro: fica no histórico (tabela vistorias)
     km=str(request.form.get('km_atual',car['km_atual'] if car['km_atual'] is not None else '')).strip()
     image = car['image']
     if 'image' in request.files and request.files['image'].filename:
@@ -744,9 +842,10 @@ def update_car(cid):
             if os.path.exists(p): os.remove(p)
         image = save_upload(request.files['image'],'cars')
     conn.execute('UPDATE cars SET year=?,make=?,model=?,vin=?,image=?,purchase_date=?,placa=?,renavam=?,condutor=?,chassi=?,licenciamento=?,ipva=?,combustivel=?,crv=?,crlv=?,seguro=?,vistoria_data=?,vistoria_validade=?,km_atual=? WHERE id=?',
-                 (int(year),make,model,vin or None,image,pd or None,placa or None,renavam or None,condutor or None,chassi or None,lic or None,ipva or None,combustivel or None,crv or None,crlv or None,seguro or None,vis_data or None,vis_val or None,int(km) if km.isdigit() else None,cid))
+                 (int(year),make,model,vin or None,image,pd or None,placa or None,renavam or None,condutor or None,chassi or None,lic or None,ipva or None,combustivel or None,crv or None,crlv or None,seguro or None,car['vistoria_data'],car['vistoria_validade'],int(km) if km.isdigit() else None,cid))
     conn.commit()
     updated = dict(conn.execute('SELECT * FROM cars WHERE id=?',(cid,)).fetchone())
+    updated['vistoria_data'], updated['vistoria_validade'] = latest_vistoria(conn, cid, updated.get('vistoria_data'), updated.get('vistoria_validade'))
     conn.close()
     return jsonify(updated)
 
@@ -761,6 +860,9 @@ def delete_car(cid):
         if os.path.exists(p): os.remove(p)
     for img in conn.execute("SELECT mi.filename FROM maintenance_images mi JOIN maintenance m ON mi.maintenance_id=m.id WHERE m.car_id=?",(cid,)).fetchall():
         p = os.path.join(app.config['UPLOAD_FOLDER'],'maintenance',img['filename'])
+        if os.path.exists(p): os.remove(p)
+    for img in conn.execute("SELECT vi.filename FROM vistoria_images vi JOIN vistorias v ON vi.vistoria_id=v.id WHERE v.car_id=?",(cid,)).fetchall():
+        p = os.path.join(app.config['UPLOAD_FOLDER'],'vistorias',img['filename'])
         if os.path.exists(p): os.remove(p)
     conn.execute('DELETE FROM cars WHERE id=?',(cid,)); conn.commit(); conn.close()
     return jsonify({'success':True})
@@ -796,11 +898,11 @@ def add_maintenance(cid):
     t=request.form.get('title','').strip(); mt=request.form.get('maintenance_type','').strip()
     sd=request.form.get('service_date','').strip(); odo=request.form.get('odometer','').strip()
     v=request.form.get('parts_vendor','').strip(); c=request.form.get('cost','').strip()
-    n=request.form.get('notes','').strip()
+    n=request.form.get('notes','').strip(); drv=request.form.get('driver','').strip()
     if not t or not mt or not sd: conn.close(); return jsonify({'error':'Título, tipo e data obrigatórios'}), 400
     if mt not in ('Repair','Maintenance','Upgrade','Inspection'): conn.close(); return jsonify({'error':'Tipo inválido'}), 400
-    cur = conn.execute('INSERT INTO maintenance (car_id,title,maintenance_type,service_date,odometer,parts_vendor,cost,notes) VALUES (?,?,?,?,?,?,?,?)',
-        (cid,t,mt,sd,int(odo) if odo else None,v or None,float(c) if c else None,n or None))
+    cur = conn.execute('INSERT INTO maintenance (car_id,title,maintenance_type,service_date,odometer,parts_vendor,cost,notes,driver) VALUES (?,?,?,?,?,?,?,?,?)',
+        (cid,t,mt,sd,int(odo) if odo else None,v or None,float(c) if c else None,n or None,drv or None))
     mid = cur.lastrowid
     for f in request.files.getlist('gallery'):
         fn = save_upload(f,'maintenance')
@@ -828,11 +930,11 @@ def update_maintenance(mid):
     t=request.form.get('title',entry['title']).strip(); mt=request.form.get('maintenance_type',entry['maintenance_type']).strip()
     sd=request.form.get('service_date',entry['service_date']).strip(); odo=request.form.get('odometer','').strip()
     v=request.form.get('parts_vendor',entry['parts_vendor'] or '').strip(); c=request.form.get('cost','').strip()
-    n=request.form.get('notes',entry['notes'] or '').strip()
+    n=request.form.get('notes',entry['notes'] or '').strip(); drv=request.form.get('driver',entry['driver'] or '').strip()
     if not t or not mt or not sd: conn.close(); return jsonify({'error':'Título, tipo e data obrigatórios'}), 400
     if mt not in ('Repair','Maintenance','Upgrade','Inspection'): conn.close(); return jsonify({'error':'Tipo inválido'}), 400
-    conn.execute('UPDATE maintenance SET title=?,maintenance_type=?,service_date=?,odometer=?,parts_vendor=?,cost=?,notes=? WHERE id=?',
-        (t,mt,sd,int(odo) if odo else entry['odometer'],v or None,float(c) if c else entry['cost'],n or None,mid))
+    conn.execute('UPDATE maintenance SET title=?,maintenance_type=?,service_date=?,odometer=?,parts_vendor=?,cost=?,notes=?,driver=? WHERE id=?',
+        (t,mt,sd,int(odo) if odo else entry['odometer'],v or None,float(c) if c else entry['cost'],n or None,drv or None,mid))
     for f in request.files.getlist('gallery'):
         fn = save_upload(f,'maintenance')
         if fn: conn.execute('INSERT INTO maintenance_images (maintenance_id,filename,original_name,file_type) VALUES (?,?,?,?)',(mid,fn,f.filename,get_file_type(fn)))
@@ -902,6 +1004,70 @@ def delete_maintenance_image(iid):
     p = os.path.join(app.config['UPLOAD_FOLDER'],'maintenance',img['filename'])
     if os.path.exists(p): os.remove(p)
     conn.execute('DELETE FROM maintenance_images WHERE id=?',(iid,)); conn.commit(); conn.close()
+    return jsonify({'success':True})
+
+# ── API de Vistorias (histórico 1:N por veículo) ────────
+@app.route('/api/cars/<int:cid>/vistorias', methods=['GET'])
+@login_required
+def get_vistorias(cid):
+    conn = get_db()
+    car = can_access_car(conn, cid, g.user)
+    if not car: conn.close(); return jsonify({'error':'Não encontrado'}), 404
+    rows = conn.execute('SELECT * FROM vistorias WHERE car_id=? ORDER BY vistoria_data DESC, id DESC',(cid,)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d['images'] = [dict(i) for i in conn.execute('SELECT * FROM vistoria_images WHERE vistoria_id=? ORDER BY created_at',(d['id'],)).fetchall()]
+        out.append(d)
+    conn.close()
+    return jsonify(out)
+
+@app.route('/api/cars/<int:cid>/vistorias', methods=['POST'])
+@perm_required('can_add_records')
+def add_vistoria(cid):
+    conn = get_db()
+    car = can_access_car(conn, cid, g.user)
+    if not car: conn.close(); return jsonify({'error':'Não encontrado'}), 404
+    vd = request.form.get('vistoria_data','').strip()
+    val = request.form.get('validade','').strip()
+    obs = request.form.get('observacao','').strip()
+    if not vd: conn.close(); return jsonify({'error':'Data da vistoria obrigatória'}), 400
+    cur = conn.execute('INSERT INTO vistorias (car_id,vistoria_data,validade,observacao) VALUES (?,?,?,?)',
+                       (cid, vd, val or None, obs or None))
+    vid = cur.lastrowid
+    for f in request.files.getlist('gallery'):
+        fn = save_upload(f,'vistorias')
+        if fn: conn.execute('INSERT INTO vistoria_images (vistoria_id,filename,original_name,file_type) VALUES (?,?,?,?)',
+                            (vid,fn,f.filename,get_file_type(fn)))
+    conn.commit()
+    row = dict(conn.execute('SELECT * FROM vistorias WHERE id=?',(vid,)).fetchone())
+    row['images'] = [dict(i) for i in conn.execute('SELECT * FROM vistoria_images WHERE vistoria_id=? ORDER BY created_at',(vid,)).fetchall()]
+    conn.close()
+    return jsonify(row), 201
+
+@app.route('/api/vistorias/<int:vid>', methods=['DELETE'])
+@perm_required('can_delete_records')
+def delete_vistoria(vid):
+    conn = get_db()
+    v = conn.execute('SELECT * FROM vistorias WHERE id=?',(vid,)).fetchone()
+    if not v: conn.close(); return jsonify({'error':'Não encontrado'}), 404
+    if not can_access_car(conn, v['car_id'], g.user): conn.close(); return jsonify({'error':'Sem permissão'}), 403
+    for img in conn.execute('SELECT filename FROM vistoria_images WHERE vistoria_id=?',(vid,)).fetchall():
+        p = os.path.join(app.config['UPLOAD_FOLDER'],'vistorias',img['filename'])
+        if os.path.exists(p): os.remove(p)
+    conn.execute('DELETE FROM vistorias WHERE id=?',(vid,)); conn.commit(); conn.close()
+    return jsonify({'success':True})
+
+@app.route('/api/vistoria/images/<int:iid>', methods=['DELETE'])
+@perm_required('can_delete_records')
+def delete_vistoria_image(iid):
+    conn = get_db()
+    img = conn.execute('SELECT vi.*, v.car_id FROM vistoria_images vi JOIN vistorias v ON vi.vistoria_id=v.id WHERE vi.id=?',(iid,)).fetchone()
+    if not img: conn.close(); return jsonify({'error':'Não encontrado'}), 404
+    if not can_access_car(conn, img['car_id'], g.user): conn.close(); return jsonify({'error':'Sem permissão'}), 403
+    p = os.path.join(app.config['UPLOAD_FOLDER'],'vistorias',img['filename'])
+    if os.path.exists(p): os.remove(p)
+    conn.execute('DELETE FROM vistoria_images WHERE id=?',(iid,)); conn.commit(); conn.close()
     return jsonify({'success':True})
 
 # ── Lembretes de Serviço ───────────────────────────────
@@ -1130,6 +1296,144 @@ def _parse_date(raw):
     return None
 
 # ── Estatísticas do Painel (por usuário) ───────────────
+
+@app.route('/api/cars/<int:cid>/fuelups', methods=['GET'])
+def get_fuelups(cid):
+    conn = get_db()
+    car = can_access_car(conn, cid, g.user)
+    if not car: conn.close(); return jsonify({'error':'Não encontrado'}), 404
+    rows = conn.execute('SELECT * FROM fuelups WHERE car_id=? ORDER BY fuel_date DESC', (cid,)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/cars/<int:cid>/fuelups', methods=['POST'])
+@perm_required('can_add_records')
+def add_fuelup(cid):
+    conn = get_db()
+    car = can_access_car(conn, cid, g.user)
+    if not car: conn.close(); return jsonify({'error':'Não encontrado'}), 404
+    d = request.form.get('fuel_date','').strip(); lit = request.form.get('liters','').strip()
+    pr = request.form.get('price','').strip(); odo = request.form.get('odometer','').strip()
+    v = request.form.get('parts_vendor','').strip(); drv = request.form.get('driver','').strip()
+    n = request.form.get('notes','').strip()
+    if not d: conn.close(); return jsonify({'error':'Data obrigatória'}), 400
+    cur = conn.execute('INSERT INTO fuelups (car_id,fuel_date,liters,price,odometer,parts_vendor,driver,notes) VALUES (?,?,?,?,?,?,?,?)',
+        (cid,d,float(lit) if lit else None,float(pr) if pr else None,int(odo) if odo else None,v or None,drv or None,n or None))
+    conn.commit()
+    row = dict(conn.execute('SELECT * FROM fuelups WHERE id=?',(cur.lastrowid,)).fetchone())
+    conn.close()
+    return jsonify(row), 201
+
+@app.route('/api/fuelups/<int:fid>', methods=['DELETE'])
+def delete_fuelup(fid):
+    conn = get_db()
+    row = conn.execute('SELECT * FROM fuelups WHERE id=?',(fid,)).fetchone()
+    if not row: conn.close(); return jsonify({'error':'Não encontrado'}), 404
+    if not can_access_car(conn, row['car_id'], g.user): conn.close(); return jsonify({'error':'Sem permissão'}), 403
+    conn.execute('DELETE FROM fuelups WHERE id=?',(fid,)); conn.commit(); conn.close()
+    return jsonify({'ok':True})
+
+@app.route('/api/cars/<int:cid>/infractions', methods=['GET'])
+def get_infractions(cid):
+    conn = get_db()
+    car = can_access_car(conn, cid, g.user)
+    if not car: conn.close(); return jsonify({'error':'Não encontrado'}), 404
+    rows = conn.execute('SELECT * FROM infractions WHERE car_id=? ORDER BY infraction_date DESC', (cid,)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/cars/<int:cid>/infractions', methods=['POST'])
+@perm_required('can_add_records')
+def add_infraction(cid):
+    conn = get_db()
+    car = can_access_car(conn, cid, g.user)
+    if not car: conn.close(); return jsonify({'error':'Não encontrado'}), 404
+    d = request.form.get('infraction_date','').strip(); desc = request.form.get('description','').strip()
+    val = request.form.get('value','').strip(); pts = request.form.get('points','').strip()
+    st = request.form.get('status','Pendente').strip(); n = request.form.get('notes','').strip()
+    if not d: conn.close(); return jsonify({'error':'Data obrigatória'}), 400
+    if st not in ('Pendente','Paga','Recorrida','Cancelada'): st = 'Pendente'
+    cur = conn.execute('INSERT INTO infractions (car_id,infraction_date,description,value,points,status,notes) VALUES (?,?,?,?,?,?,?)',
+        (cid,d,desc or None,float(val) if val else None,int(pts) if pts else None,st,n or None))
+    conn.commit()
+    row = dict(conn.execute('SELECT * FROM infractions WHERE id=?',(cur.lastrowid,)).fetchone())
+    conn.close()
+    return jsonify(row), 201
+
+@app.route('/api/infractions/<int:iid>', methods=['DELETE'])
+def delete_infraction(iid):
+    conn = get_db()
+    row = conn.execute('SELECT * FROM infractions WHERE id=?',(iid,)).fetchone()
+    if not row: conn.close(); return jsonify({'error':'Não encontrado'}), 404
+    if not can_access_car(conn, row['car_id'], g.user): conn.close(); return jsonify({'error':'Sem permissão'}), 403
+    conn.execute('DELETE FROM infractions WHERE id=?',(iid,)); conn.commit(); conn.close()
+    return jsonify({'ok':True})
+
+@app.route('/api/alerts')
+def get_alerts():
+    from datetime import date as _date
+    conn = get_db()
+    if g.user['role'] == 'admin':
+        cars = conn.execute('SELECT * FROM cars').fetchall()
+    else:
+        cars = conn.execute('SELECT * FROM cars WHERE user_id=?', (g.user['id'],)).fetchall()
+    labels = [('licenciamento','Licenciamento'),('ipva','IPVA'),('crlv','CRLV'),('seguro','Seguro'),('vistoria_validade','Vistoria')]
+    today = _date.today()
+    alerts = []
+    for c in cars:
+        vist_validade = latest_vistoria(conn, c['id'], c['vistoria_data'], c['vistoria_validade'])[1]
+        for key, label in labels:
+            v = vist_validade if key == 'vistoria_validade' else c[key]
+            if not v: continue
+            try: delta = (_date.fromisoformat(v) - today).days
+            except ValueError: continue
+            if delta < 0:
+                alerts.append({'car': f"{c['year']} {c['make']} {c['model']}", 'car_id': c['id'], 'item': label, 'date': v, 'level': 'vencido', 'days': delta})
+            elif delta <= 30:
+                alerts.append({'car': f"{c['year']} {c['make']} {c['model']}", 'car_id': c['id'], 'item': label, 'date': v, 'level': 'vence_em_breve', 'days': delta})
+    alerts.sort(key=lambda a: a['days'])
+    conn.close()
+    return jsonify(alerts)
+
+@app.route('/api/fleet/report')
+def fleet_report():
+    conn = get_db()
+    if g.user['role'] == 'admin':
+        cars = conn.execute('SELECT * FROM cars').fetchall()
+    else:
+        cars = conn.execute('SELECT * FROM cars WHERE user_id=?', (g.user['id'],)).fetchall()
+    rows = []
+    for c in cars:
+        m = conn.execute('SELECT COUNT(*) as n, COALESCE(SUM(cost),0) as t FROM maintenance WHERE car_id=?', (c['id'],)).fetchone()
+        f = conn.execute('SELECT COUNT(*) as n, COALESCE(SUM(price),0) as t FROM fuelups WHERE car_id=?', (c['id'],)).fetchone()
+        i = conn.execute("SELECT COUNT(*) as n, COALESCE(SUM(value),0) as t FROM infractions WHERE car_id=? AND status='Pendente'", (c['id'],)).fetchone()
+        rows.append({'car_id': c['id'], 'car': f"{c['year']} {c['make']} {c['model']}", 'placa': c['placa'],
+                     'maintenance_count': m['n'], 'maintenance_cost': m['t'],
+                     'fuelups': f['n'], 'fuel_cost': f['t'],
+                     'infractions_open': i['n'], 'infractions_value': i['t'],
+                     'total_cost': m['t'] + f['t']})
+    conn.close()
+    return jsonify(rows)
+
+@app.route('/api/export/fleet')
+def export_fleet():
+    import csv, io as _io
+    conn = get_db()
+    if g.user['role'] == 'admin':
+        cars = conn.execute('SELECT * FROM cars ORDER BY created_at DESC').fetchall()
+    else:
+        cars = conn.execute('SELECT * FROM cars WHERE user_id=? ORDER BY created_at DESC', (g.user['id'],)).fetchall()
+    out = _io.StringIO()
+    w = csv.writer(out)
+    w.writerow(['Ano','Marca','Modelo','Placa','Combustível','KM Atual','Licenciamento','IPVA','CRLV','Seguro','Vistoria','Gasto Manutenção','Gasto Combustível','Infrações Abertas'])
+    for c in cars:
+        m = conn.execute('SELECT COALESCE(SUM(cost),0) as t FROM maintenance WHERE car_id=?', (c['id'],)).fetchone()['t']
+        f = conn.execute('SELECT COALESCE(SUM(price),0) as t FROM fuelups WHERE car_id=?', (c['id'],)).fetchone()['t']
+        inf = conn.execute("SELECT COUNT(*) as n FROM infractions WHERE car_id=? AND status='Pendente'", (c['id'],)).fetchone()['n']
+        w.writerow([c['year'],c['make'],c['model'],c['placa'] or '',c['combustivel'] or '',c['km_atual'] if c['km_atual'] is not None else '',c['licenciamento'] or '',c['ipva'] or '',c['crlv'] or '',c['seguro'] or '',latest_vistoria(conn, c['id'], c['vistoria_data'], c['vistoria_validade'])[1] or '',m,f,inf])
+    conn.close()
+    return Response(out.getvalue(), mimetype='text/csv', headers={'Content-Disposition':'attachment; filename=frota.csv'})
+
 @app.route('/api/stats')
 @login_required
 def get_stats():
