@@ -30,8 +30,29 @@ function switchView(v){
     if(v==='dashboard')loadDashboard();if(v==='garage')loadCars();
     if(v!=='car-detail')setActiveSidebarCar(null);
     document.getElementById('sidebar').classList.remove('open');
+    const ov=document.getElementById('sidebarOverlay');if(ov)ov.classList.remove('open');
+    updateMobileNav(v);
 }
-function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open')}
+function toggleSidebar(){
+    const s=document.getElementById('sidebar');
+    const ov=document.getElementById('sidebarOverlay');
+    s.classList.toggle('open');
+    if(ov)ov.classList.toggle('open',s.classList.contains('open'));
+}
+function updateMobileNav(v){
+    const map={dashboard:'mobileNavDashboard',garage:'mobileNavGarage','car-detail':'mobileNavGarage'};
+    document.querySelectorAll('.mobile-nav-item').forEach(b=>b.classList.remove('active'));
+    const activeId=map[v];
+    if(activeId){const el=document.getElementById(activeId);if(el)el.classList.add('active');}
+}
+function triggerMobileAdd(){
+    const v=document.querySelector('.view.active');
+    if(!v)return;
+    const id=v.id;
+    if(id==='view-garage')openModal('addCarModal');
+    else if(id==='view-car-detail')openAddMaintenanceModal();
+    else openModal('addCarModal');
+}
 
 // Theme
 function applyTheme(){
