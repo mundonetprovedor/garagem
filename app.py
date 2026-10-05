@@ -139,6 +139,7 @@ def _init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             maintenance_id INTEGER NOT NULL, filename TEXT NOT NULL,
             original_name TEXT, file_type TEXT NOT NULL DEFAULT 'image',
+            caption TEXT,
             created_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (maintenance_id) REFERENCES maintenance(id) ON DELETE CASCADE
         );
@@ -155,6 +156,7 @@ def _init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             vistoria_id INTEGER NOT NULL, filename TEXT NOT NULL,
             original_name TEXT, file_type TEXT NOT NULL DEFAULT 'image',
+            caption TEXT,
             created_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (vistoria_id) REFERENCES vistorias(id) ON DELETE CASCADE
         );
@@ -230,9 +232,10 @@ def _init_db():
                 CREATE TABLE maintenance_images_new (id INTEGER PRIMARY KEY AUTOINCREMENT,
                 maintenance_id INTEGER NOT NULL,filename TEXT NOT NULL,original_name TEXT,
                 file_type TEXT NOT NULL DEFAULT 'image',created_at TEXT DEFAULT (datetime('now')),
+                caption TEXT,
                 FOREIGN KEY (maintenance_id) REFERENCES maintenance(id) ON DELETE CASCADE);
-                INSERT INTO maintenance_images_new (id,maintenance_id,filename,original_name,file_type,created_at)
-                SELECT id,maintenance_id,filename,original_name,file_type,created_at FROM maintenance_images;
+                INSERT INTO maintenance_images_new (id,maintenance_id,filename,original_name,file_type,created_at,caption)
+                SELECT id,maintenance_id,filename,original_name,file_type,created_at,caption FROM maintenance_images;
                 DROP TABLE maintenance_images;
                 ALTER TABLE maintenance_images_new RENAME TO maintenance_images;
                 COMMIT;""")
@@ -240,6 +243,15 @@ def _init_db():
             print("Migração: chave estrangeira de maintenance_images reparada")
     except Exception as e:
         print(f"Migração FK de maintenance_images: {e}")
+    # Migração: legenda opcional nos anexos
+    try:
+        for tbl in ('maintenance_images','vistoria_images'):
+            cols=[r['name'] for r in conn.execute(f"PRAGMA table_info({tbl})").fetchall()]
+            if 'caption' not in cols:
+                conn.execute(f"ALTER TABLE {tbl} ADD COLUMN caption TEXT")
+        conn.commit()
+    except Exception as e:
+        print(f"Migração de caption dos anexos: {e}")
     # Migração: adiciona CHECK de Inspection
     try:
         tbl = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='maintenance'").fetchone()
@@ -1009,6 +1021,20 @@ def delete_maintenance_image(iid):
     conn.execute('DELETE FROM maintenance_images WHERE id=?',(iid,)); conn.commit(); conn.close()
     return jsonify({'success':True})
 
+@app.route('/api/maintenance/images/<int:iid>', methods=['PUT'])
+@perm_required('can_edit_records')
+def update_maintenance_image(iid):
+    conn = get_db()
+    img = conn.execute('SELECT mi.*, m.car_id FROM maintenance_images mi JOIN maintenance m ON mi.maintenance_id=m.id WHERE mi.id=?',(iid,)).fetchone()
+    if not img: conn.close(); return jsonify({'error':'Não encontrado'}), 404
+    if not can_access_car(conn, img['car_id'], g.user): conn.close(); return jsonify({'error':'Sem permissão'}), 403
+    caption = (request.get_json(silent=True) or {}).get('caption')
+    if caption is None: caption = request.form.get('caption','')
+    caption = (caption or '').strip()[:500] or None
+    conn.execute('UPDATE maintenance_images SET caption=? WHERE id=?',(caption,iid))
+    conn.commit(); conn.close()
+    return jsonify({'success':True,'caption':caption})
+
 # ── API de Vistorias (histórico 1:N por veículo) ────────
 @app.route('/api/cars/<int:cid>/vistorias', methods=['GET'])
 @login_required
@@ -1072,6 +1098,20 @@ def delete_vistoria_image(iid):
     if os.path.exists(p): os.remove(p)
     conn.execute('DELETE FROM vistoria_images WHERE id=?',(iid,)); conn.commit(); conn.close()
     return jsonify({'success':True})
+
+@app.route('/api/vistoria/images/<int:iid>', methods=['PUT'])
+@perm_required('can_edit_records')
+def update_vistoria_image(iid):
+    conn = get_db()
+    img = conn.execute('SELECT vi.*, v.car_id FROM vistoria_images vi JOIN vistorias v ON vi.vistoria_id=v.id WHERE vi.id=?',(iid,)).fetchone()
+    if not img: conn.close(); return jsonify({'error':'Não encontrado'}), 404
+    if not can_access_car(conn, img['car_id'], g.user): conn.close(); return jsonify({'error':'Sem permissão'}), 403
+    caption = (request.get_json(silent=True) or {}).get('caption')
+    if caption is None: caption = request.form.get('caption','')
+    caption = (caption or '').strip()[:500] or None
+    conn.execute('UPDATE vistoria_images SET caption=? WHERE id=?',(caption,iid))
+    conn.commit(); conn.close()
+    return jsonify({'success':True,'caption':caption})
 
 # ── Lembretes de Serviço ───────────────────────────────
 @app.route('/api/cars/<int:cid>/reminders', methods=['GET'])

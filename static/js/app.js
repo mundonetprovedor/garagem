@@ -212,7 +212,7 @@ function renderMaintGallery(e){
     const canEdit=hasPerm('can_edit_records');
     if(!images.length&&!canEdit)return'';
     const urls=images.map(i=>'/uploads/maintenance/'+i.filename);
-    const items=images.map((img,idx)=>`<span class="gallery-thumb-wrap"><img src="${urls[idx]}" alt="" loading="lazy" onclick='openLightbox(${JSON.stringify(urls)},${idx})'>${canEdit?`<button type="button" class="thumb-del" title="Remover foto" onclick="event.stopPropagation();removeMaintImage(${e.id},${img.id})">&times;</button>`:''}</span>`).join('');
+    const items=images.map((img,idx)=>`<div class="img-with-cap"><span class="gallery-thumb-wrap"><img src="${urls[idx]}" alt="" loading="lazy" onclick='openLightbox(${JSON.stringify(urls)},${idx})'>${canEdit?`<button type="button" class="thumb-del" title="Remover foto" onclick="event.stopPropagation();removeMaintImage(${e.id},${img.id})">&times;</button>`:''}</span>${canEdit||img.caption?`<div class="img-cap ${img.caption?'filled':''}" onclick="event.stopPropagation();${canEdit?`editImgCaption(${e.id},${img.id},'maint',this)`:''}">${esc(img.caption||'')||'+ legenda'}</div>`:''}</div>`).join('');
     const tile=canEdit?`<label class="add-photo-tile" title="Adicionar fotos"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg><span>Fotos</span><input type="file" accept="image/*" multiple onchange="uploadMaintPhotos(this)" data-mid="${e.id}"></label><label class="add-photo-tile" title="Tirar foto"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg><span>Tirar</span><input type="file" accept="image/*" capture="environment" onchange="uploadMaintPhotos(this)" data-mid="${e.id}"></label>`:'';
     return `<div class="view-maint-gallery">${items}${tile}</div>`;
 }
@@ -252,6 +252,15 @@ async function removeMaintImage(mid,iid){
         else await loadMaintenance();
     }catch(e){toast(e.message||'Falha','error')}
 }
+function editImgCaption(mid,iid,ctx,el){
+    const cur=el.innerText==='+ legenda'?'':el.innerText;
+    const v=prompt('Legenda da foto',cur);
+    if(v===null)return;
+    const url=ctx==='maint'?`/api/maintenance/images/${iid}`:`/api/vistoria/images/${iid}`;
+    fetch(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({caption:v})})
+    .then(r=>{if(!r.ok)throw new Error('Falha');toast('Legenda salva','success');if(ctx==='maint')refreshMaintDetail(mid);else loadVistorias()})
+    .catch(e=>toast(e.message,'error'));
+}
 
 // ── Vistorias (histórico 1:N por veículo) ───────────
 async function refreshCarHero(){
@@ -271,7 +280,7 @@ async function loadVistorias(){
             const imgs=(v.images||[]).filter(i=>i.file_type!=='document');
             const docs=(v.images||[]).filter(i=>i.file_type==='document');
             const urls=imgs.map(i=>'/uploads/vistorias/'+i.filename);
-            const thumbs=imgs.length?`<div class="vistoria-thumbs">${imgs.map((img,idx)=>`<span class="vistoria-thumb"><img src="${urls[idx]}" alt="" loading="lazy" onclick='openLightbox(${JSON.stringify(urls)},${idx})'>${canDel?`<button class="vistoria-thumb-del" title="Remover foto" onclick="event.stopPropagation();deleteVistoriaImage(${img.id})">&times;</button>`:''}</span>`).join('')}</div>`:'';
+            const thumbs=imgs.length?`<div class="vistoria-thumbs">${imgs.map((img,idx)=>`<div class="vistoria-img-item"><span class="vistoria-thumb"><img src="${urls[idx]}" alt="" loading="lazy" onclick='openLightbox(${JSON.stringify(urls)},${idx})'>${canDel?`<button class="vistoria-thumb-del" title="Remover foto" onclick="event.stopPropagation();deleteVistoriaImage(${img.id})">&times;</button>`:''}</span>${canDel||img.caption?`<div class="img-cap ${img.caption?'filled':''}" onclick="event.stopPropagation();${canDel?`editImgCaption(${v.id},${img.id},'vist',this)`:''}">${esc(img.caption||'')||'+ legenda'}</div>`:''}</div>`).join('')}</div>`:'';
             const docLinks=docs.length?`<div class="vistoria-docs">${docs.map(d=>`<a class="doc-link" href="/uploads/vistorias/${d.filename}" target="_blank">📄 ${esc(d.original_name||'Documento.pdf')}</a>`).join('')}</div>`:'';
             return `<div class="vistoria-card">
                 <div class="vistoria-head"><div class="vistoria-date">🔍 ${formatDate(v.vistoria_data)}</div>${v.validade?`<div class="vistoria-valid">Validade: ${formatDate(v.validade)}</div>`:''}${canDel?`<button class="btn btn-sm btn-danger vistoria-del" onclick="deleteVistoria(${v.id})">Excluir</button>`:''}</div>

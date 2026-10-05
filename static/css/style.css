@@ -813,6 +813,11 @@ body{
   opacity:0;transition:opacity var(--transition);
 }
 .vistoria-thumb:hover .vistoria-thumb-del{opacity:1}
+.img-with-cap{display:flex;flex-direction:column;gap:4px}
+.img-cap{max-width:92px;font-size:0.66rem;line-height:1.25;color:var(--text-secondary);word-break:break-word;cursor:pointer}
+.img-cap:not(.filled){color:var(--text-muted)}
+.img-cap:hover{color:var(--accent)}
+.vistoria-img-item{display:flex;flex-direction:column;gap:4px;max-width:90px}
 
 /* ═══════════════════════════════════════════════
    USERS LIST
