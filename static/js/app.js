@@ -102,15 +102,15 @@ async function loadDashboard(){
         if(cards[3])cards[3].style.display=userSettings.show_due!==false?'':'none';
         document.getElementById('statCars').textContent=d.total_cars;
         document.getElementById('statMaintenance').textContent=d.total_maintenance;
-        document.getElementById('statCost').textContent='$'+d.total_cost.toLocaleString('pt-BR',{minimumFractionDigits:2});
+        document.getElementById('statCost').textContent=fmtMoney(d.total_cost);
         loadUpcoming();
         const c=document.getElementById('recentActivity');
         if(!d.recent_entries.length){c.innerHTML='<p class="empty-text">Nenhum registro ainda.</p>';return}
         c.innerHTML=d.recent_entries.map(e=>`
             <div class="recent-item" onclick="goToMaintRecord(${e.car_id},${e.id})">
-                <span class="recent-badge badge-${e.maintenance_type.toLowerCase()}">${e.maintenance_type}</span>
+                <span class="recent-badge badge-${e.maintenance_type.toLowerCase()}">${maintLabel(e.maintenance_type)}</span>
                 <div class="recent-info"><div class="recent-title">${esc(e.title)}</div><div class="recent-sub">${e.year} ${esc(e.make)} ${esc(e.model)} · ${formatDate(e.service_date)}</div></div>
-                ${e.cost?`<span class="recent-cost">$${Number(e.cost).toFixed(2)}</span>`:''}
+                ${e.cost?`<span class="recent-cost">${fmtMoney(e.cost)}</span>`:''}
             </div>`).join('');
     }catch(e){console.error(e)}
 }
@@ -137,7 +137,7 @@ async function loadCars(){
                 <div class="car-card-name">${car.year} ${esc(car.make)} ${esc(car.model)}</div>
                 ${isAdmin&&car.owner_name?`<div class="car-card-owner">${esc(car.owner_name)}</div>`:''}
                 ${car.placa?`<div class="car-card-vin">${esc(car.placa)}</div>`:''}
-                <div class="car-card-stats"><span>${car.maintenance_count} registros</span><span>$${Number(car.total_cost).toFixed(0)}</span>${car.latest_odometer?`<span>${Number(car.latest_odometer).toLocaleString()} mi</span>`:''}</div>
+                <div class="car-card-stats"><span>${car.maintenance_count} registros</span><span>${fmtMoney(car.total_cost,0)}</span>${car.latest_odometer?`<span>${Number(car.latest_odometer).toLocaleString()} km</span>`:''}</div>
                 ${carCardReminders(car)}
             </div>
             ${hasPerm('can_edit_cars')||hasPerm('can_delete_cars')?`<div class="car-card-actions">${hasPerm('can_edit_cars')?`<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();openEditCarModal(${car.id})">Editar</button>`:''}${hasPerm('can_delete_cars')?`<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteCar(${car.id},'${esc(car.year)} ${esc(car.make)} ${esc(car.model)}')">Excluir</button>`:''}</div>`:''}
@@ -154,13 +154,12 @@ function exportCarCSV(){if(currentCarId)window.location.href='/api/cars/'+curren
 function openImportForCar(){openModal('settingsModal');switchSettingsTab('import');setTimeout(()=>{document.getElementById('importCarSelect').value=currentCarId},200)}
 
 // Maintenance
-async function loadMaintenance(){if(!currentCarId)return;const q=document.getElementById('maintSearch')?.value||'';const s=document.getElementById('maintSort')?.value||'date_desc';try{const r=await fetch(`/api/cars/${currentCarId}/maintenance?q=${encodeURIComponent(q)}&sort=${s}`);const entries=await r.json();const list=document.getElementById('maintenanceList');if(!entries.length){list.innerHTML=q?'<p class="empty-text">Nenhum resultado.</p>':'<p class="empty-text">Nenhum registro ainda.</p>';return}list.innerHTML=entries.map(e=>`<div class="maint-card" onclick='openMaintDetail(${JSON.stringify(e).replace(/'/g,"&#39;")})'><div class="maint-type-dot ${e.maintenance_type.toLowerCase()}"></div><div class="maint-title-col"><div class="maint-title">${esc(e.title)}</div><div class="maint-subtitle">${e.maintenance_type} · ${formatDate(e.service_date)}</div></div><div class="maint-meta-col">${e.odometer?`<div class="maint-meta-item"><div class="val">${Number(e.odometer).toLocaleString()}</div><div class="lbl">Milhas</div></div>`:''}${e.cost?`<div class="maint-meta-item"><div class="val" style="color:var(--green)">$${Number(e.cost).toFixed(2)}</div><div class="lbl">Custo</div></div>`:''}</div></div>`).join('')}catch(e){console.error(e)}}
+async function loadMaintenance(){if(!currentCarId)return[];const q=document.getElementById('maintSearch')?.value||'';const s=document.getElementById('maintSort')?.value||'date_desc';try{const r=await fetch(`/api/cars/${currentCarId}/maintenance?q=${encodeURIComponent(q)}&sort=${s}`);const entries=await r.json();const list=document.getElementById('maintenanceList');if(!entries.length){list.innerHTML=q?'<p class="empty-text">Nenhum resultado.</p>':'<p class="empty-text">Nenhum registro ainda.</p>';return entries}list.innerHTML=entries.map(e=>`<div class="maint-card" onclick='openMaintDetail(${JSON.stringify(e).replace(/'/g,"&#39;")})'><div class="maint-type-dot ${e.maintenance_type.toLowerCase()}"></div><div class="maint-title-col"><div class="maint-title">${esc(e.title)}</div><div class="maint-subtitle">${maintLabel(e.maintenance_type)} · ${formatDate(e.service_date)}</div></div><div class="maint-meta-col">${e.odometer?`<div class="maint-meta-item"><div class="val">${Number(e.odometer).toLocaleString()}</div><div class="lbl">Km</div></div>`:''}${e.cost?`<div class="maint-meta-item"><div class="val" style="color:var(--green)">${fmtMoney(e.cost)}</div><div class="lbl">Custo</div></div>`:''}</div></div>`).join('');return entries}catch(e){console.error(e);return[]}}
 
 function openMaintDetail(e){
-    const images=(e.images||[]).filter(i=>i.file_type!=='document');
     const docs=(e.images||[]).filter(i=>i.file_type==='document');
     document.getElementById('viewMaintTitle').textContent=e.title;
-    document.getElementById('viewMaintContent').innerHTML=`<div class="view-maint-details"><div class="detail-item"><span class="lbl">Tipo</span><span class="val">${e.maintenance_type}</span></div><div class="detail-item"><span class="lbl">Data</span><span class="val">${formatDate(e.service_date)}</span></div>${e.odometer?`<div class="detail-item"><span class="lbl">Odômetro</span><span class="val">${Number(e.odometer).toLocaleString()} mi</span></div>`:''}${e.parts_vendor?`<div class="detail-item"><span class="lbl">Fornecedor</span><span class="val">${esc(e.parts_vendor)}</span></div>`:''}${e.cost!=null?`<div class="detail-item"><span class="lbl">Custo</span><span class="val">$${Number(e.cost).toFixed(2)}</span></div>`:''}</div>${e.notes?`<div class="view-maint-notes">${esc(e.notes)}</div>`:''}${images.length?`<div class="view-maint-gallery">${images.map((img,idx)=>`<img src="/uploads/maintenance/${img.filename}" alt="" onclick="event.stopPropagation();openLightbox(${JSON.stringify(images.map(i=>'/uploads/maintenance/'+i.filename)).replace(/"/g,'&quot;')},${idx})">`).join('')}</div>`:''}${docs.length?`<div class="view-maint-docs"><div class="view-maint-docs-title">Documentos</div>${docs.map(d=>`<a href="/uploads/maintenance/${d.filename}" target="_blank" class="doc-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>${esc(d.original_name||'Documento.pdf')}</a>`).join('')}</div>`:''}`;
+    document.getElementById('viewMaintContent').innerHTML=`<div class="view-maint-details"><div class="detail-item"><span class="lbl">Tipo</span><span class="val">${maintLabel(e.maintenance_type)}</span></div><div class="detail-item"><span class="lbl">Data</span><span class="val">${formatDate(e.service_date)}</span></div>${e.odometer?`<div class="detail-item"><span class="lbl">Odômetro</span><span class="val">${Number(e.odometer).toLocaleString()} km</span></div>`:''}${e.parts_vendor?`<div class="detail-item"><span class="lbl">Fornecedor</span><span class="val">${esc(e.parts_vendor)}</span></div>`:''}${e.cost!=null?`<div class="detail-item"><span class="lbl">Custo</span><span class="val">${fmtMoney(e.cost)}</span></div>`:''}</div>${e.notes?`<div class="view-maint-notes">${esc(e.notes)}</div>`:''}${renderMaintGallery(e)}${docs.length?`<div class="view-maint-docs"><div class="view-maint-docs-title">Documentos</div>${docs.map(d=>`<a href="/uploads/maintenance/${d.filename}" target="_blank" class="doc-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>${esc(d.original_name||'Documento.pdf')}</a>`).join('')}</div>`:''}`;
     let btns='';
     if(hasPerm('can_delete_records'))btns+=`<button class="btn btn-danger btn-sm" onclick="deleteMaintenance(${e.id})">Excluir</button>`;
     if(hasPerm('can_add_records'))btns+=`<button class="btn btn-ghost btn-sm" onclick="duplicateMaintenance(${e.id})">Duplicar</button>`;
@@ -174,11 +173,64 @@ function openAddMaintenanceModal(){document.getElementById('addMaintForm').reset
 
 async function submitMaintenance(e){e.preventDefault();if(!currentCarId)return;const b=document.getElementById('addMaintBtn');b.disabled=true;b.textContent='Salvando…';try{const r=await fetch('/api/cars/'+currentCarId+'/maintenance',{method:'POST',body:new FormData(e.target)});if(!r.ok){let m='Falha';try{m=(await r.json()).error}catch(x){}throw new Error(m)}toast('Salvo!','success');closeModal('addMaintModal');loadMaintenance();loadReminders();loadDashboard()}catch(e){toast(e.message,'error')}finally{b.disabled=false;b.textContent='Salvar'}}
 
-async function openEditMaintModal(id){try{const r=await fetch('/api/cars/'+currentCarId+'/maintenance');const entries=await r.json();const e=entries.find(x=>x.id===id);if(!e)return toast('Não encontrado','error');document.getElementById('editMaintId').value=e.id;document.getElementById('editMaintTitle').value=e.title;document.getElementById('editMaintDate').value=e.service_date;document.getElementById('editMaintOdo').value=e.odometer||'';document.getElementById('editMaintVendor').value=e.parts_vendor||'';document.getElementById('editMaintCost').value=e.cost||'';document.getElementById('editMaintNotes').value=e.notes||'';if(e.maintenance_type==='Maintenance')document.getElementById('editMaintTypeMaint').checked=true;else if(e.maintenance_type==='Repair')document.getElementById('editMaintTypeRepair').checked=true;else if(e.maintenance_type==='Upgrade')document.getElementById('editMaintTypeUpgrade').checked=true;else if(e.maintenance_type==='Inspection')document.getElementById('editMaintTypeInspection').checked=true;openModal('editMaintModal')}catch(e){toast('Falha','error')}}
+async function openEditMaintModal(id){try{const r=await fetch('/api/cars/'+currentCarId+'/maintenance');const entries=await r.json();const e=entries.find(x=>x.id===id);if(!e)return toast('Não encontrado','error');document.getElementById('editMaintId').value=e.id;document.getElementById('editMaintTitle').value=e.title;document.getElementById('editMaintDate').value=e.service_date;document.getElementById('editMaintOdo').value=e.odometer||'';document.getElementById('editMaintVendor').value=e.parts_vendor||'';document.getElementById('editMaintCost').value=e.cost||'';document.getElementById('editMaintNotes').value=e.notes||'';if(e.maintenance_type==='Maintenance')document.getElementById('editMaintTypeMaint').checked=true;else if(e.maintenance_type==='Repair')document.getElementById('editMaintTypeRepair').checked=true;else if(e.maintenance_type==='Upgrade')document.getElementById('editMaintTypeUpgrade').checked=true;else if(e.maintenance_type==='Inspection')document.getElementById('editMaintTypeInspection').checked=true;document.getElementById('editMaintThumbs').innerHTML=maintEditThumbsHtml(e);document.getElementById('editMaintNewThumbs').innerHTML='';openModal('editMaintModal')}catch(e){toast('Falha','error')}}
 
 async function submitEditMaintenance(e){e.preventDefault();const id=document.getElementById('editMaintId').value;try{const r=await fetch('/api/maintenance/'+id,{method:'PUT',body:new FormData(e.target)});if(!r.ok){let m='Falha';try{m=(await r.json()).error}catch(x){}throw new Error(m)}toast('Atualizado','success');closeModal('editMaintModal');loadMaintenance();loadDashboard()}catch(e){toast(e.message,'error')}}
 async function deleteMaintenance(id){if(!confirm('Excluir?'))return;try{await fetch('/api/maintenance/'+id,{method:'DELETE'});toast('Excluído','success');closeModal('viewMaintModal');loadMaintenance();loadDashboard()}catch(e){toast('Falha','error')}}
 async function duplicateMaintenance(id){try{const r=await fetch('/api/maintenance/'+id+'/duplicate',{method:'POST'});if(!r.ok){let m='Falha';try{m=(await r.json()).error}catch(x){}throw new Error(m)}toast('Duplicado','success');closeModal('viewMaintModal');loadMaintenance();loadDashboard()}catch(e){toast(e.message,'error')}}
+
+// ── Fotos dos registros (adicionar/remover depois de criados) ──
+function maintEditThumbsHtml(e){
+    const imgs=(e.images||[]).filter(i=>i.file_type!=='document');
+    if(!imgs.length)return'';
+    const urls=imgs.map(i=>'/uploads/maintenance/'+i.filename);
+    return imgs.map((img,idx)=>`<span class="gallery-thumb-wrap"><img class="gallery-thumb" src="${urls[idx]}" alt="" loading="lazy" onclick='openLightbox(${JSON.stringify(urls)},${idx})'><button type="button" class="thumb-del" title="Remover foto" onclick="event.stopPropagation();removeMaintImage(${e.id},${img.id})">&times;</button></span>`).join('');
+}
+function renderMaintGallery(e){
+    const images=(e.images||[]).filter(i=>i.file_type!=='document');
+    const canEdit=hasPerm('can_edit_records');
+    if(!images.length&&!canEdit)return'';
+    const urls=images.map(i=>'/uploads/maintenance/'+i.filename);
+    const items=images.map((img,idx)=>`<span class="gallery-thumb-wrap"><img src="${urls[idx]}" alt="" loading="lazy" onclick='openLightbox(${JSON.stringify(urls)},${idx})'>${canEdit?`<button type="button" class="thumb-del" title="Remover foto" onclick="event.stopPropagation();removeMaintImage(${e.id},${img.id})">&times;</button>`:''}</span>`).join('');
+    const tile=canEdit?`<label class="add-photo-tile" title="Adicionar fotos"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg><span>Fotos</span><input type="file" accept="image/*" multiple onchange="uploadMaintPhotos(this)" data-mid="${e.id}"></label>`:'';
+    return `<div class="view-maint-gallery">${items}${tile}</div>`;
+}
+async function refreshMaintDetail(id){
+    const entries=await loadMaintenance();
+    const e=(entries||[]).find(x=>x.id===id);
+    if(e)openMaintDetail(e);else closeModal('viewMaintModal');
+}
+async function refreshMaintEditThumbs(id){
+    const entries=await loadMaintenance();
+    const e=(entries||[]).find(x=>x.id===id);
+    const el=document.getElementById('editMaintThumbs');
+    if(e&&el)el.innerHTML=maintEditThumbsHtml(e);
+}
+async function uploadMaintPhotos(input){
+    const mid=Number(input.dataset.mid);
+    const files=Array.from(input.files||[]);
+    if(!mid||!files.length)return;
+    const fd=new FormData();
+    files.forEach(f=>fd.append('gallery',f));
+    try{
+        const r=await fetch('/api/maintenance/'+mid+'/images',{method:'POST',body:fd});
+        if(!r.ok){let m='Falha';try{m=(await r.json()).error}catch(x){}throw new Error(m)}
+        toast(files.length>1?files.length+' fotos adicionadas':'Foto adicionada','success');
+        input.value='';
+        await refreshMaintDetail(mid);
+    }catch(e){toast(e.message,'error')}
+}
+async function removeMaintImage(mid,iid){
+    if(!confirm('Remover esta foto do registro?'))return;
+    try{
+        const r=await fetch('/api/maintenance/images/'+iid,{method:'DELETE'});
+        if(!r.ok)throw new Error('Falha');
+        toast('Foto removida','success');
+        if(document.getElementById('viewMaintModal').classList.contains('open'))await refreshMaintDetail(mid);
+        else if(document.getElementById('editMaintModal').classList.contains('open'))await refreshMaintEditThumbs(mid);
+        else await loadMaintenance();
+    }catch(e){toast(e.message||'Falha','error')}
+}
 
 // ── Vistorias (histórico 1:N por veículo) ───────────
 async function refreshCarHero(){
@@ -283,11 +335,11 @@ function onCsvFileSelected(input){const info=document.getElementById('csvFileInf
 document.addEventListener('change',e=>{if(e.target.id==='importCarSelect'){const btn=document.getElementById('importNextStep1');if(btn)btn.disabled=!(e.target.value&&csvFile)}});
 function parseCSVLine(l){const r=[];let c='',q=false;for(let i=0;i<l.length;i++){const ch=l[i];if(q){if(ch==='"'&&l[i+1]==='"'){c+='"';i++}else if(ch==='"')q=false;else c+=ch}else{if(ch==='"')q=true;else if(ch===','){r.push(c.trim());c=''}else c+=ch}}r.push(c.trim());return r}
 function importGoToMapping(){if(!csvFile||!document.getElementById('importCarSelect').value)return;importTargetCarId=document.getElementById('importCarSelect').value;buildMappingUI();importGoToStep(2)}
-function buildMappingUI(){const g=document.getElementById('mappingGrid');const fields=[{key:'title',label:'Título',hint:'Resumo',required:true},{key:'maintenance_type',label:'Tipo',hint:'Reparo/Manutenção/Melhoria/Inspeção'},{key:'service_date',label:'Data do Serviço',hint:'YYYY-MM-DD',required:true},{key:'odometer',label:'Odômetro',hint:'Quilometragem'},{key:'parts_vendor',label:'Fornecedor',hint:'Origem'},{key:'cost',label:'Custo',hint:'Valor'},{key:'notes',label:'Observações',hint:'Detalhes'}];g.innerHTML=fields.map(f=>{const opts=csvHeaders.map(h=>`<option value="${esc(h)}" ${isAutoMatch(h,f.key)?'selected':''}>${esc(h)}</option>`).join('');return`<div class="mapping-row ${f.required?'required':''}"><div class="mapping-field-label">${f.required?'<span class="req-dot"></span>':'<span style="width:6px"></span>'}<span>${f.label}</span><span class="field-hint">${f.hint}</span></div><div class="mapping-arrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></div><select class="mapping-select" data-field="${f.key}"><option value="">— Ignorar —</option>${opts}</select></div>`}).join('')}
+function buildMappingUI(){const g=document.getElementById('mappingGrid');const fields=[{key:'title',label:'Título',hint:'Resumo',required:true},{key:'maintenance_type',label:'Tipo',hint:'Reparo/Manutenção/Melhoria/Vistoria'},{key:'service_date',label:'Data do Serviço',hint:'YYYY-MM-DD',required:true},{key:'odometer',label:'Odômetro',hint:'Quilometragem'},{key:'parts_vendor',label:'Fornecedor',hint:'Origem'},{key:'cost',label:'Custo',hint:'Valor'},{key:'notes',label:'Observações',hint:'Detalhes'}];g.innerHTML=fields.map(f=>{const opts=csvHeaders.map(h=>`<option value="${esc(h)}" ${isAutoMatch(h,f.key)?'selected':''}>${esc(h)}</option>`).join('');return`<div class="mapping-row ${f.required?'required':''}"><div class="mapping-field-label">${f.required?'<span class="req-dot"></span>':'<span style="width:6px"></span>'}<span>${f.label}</span><span class="field-hint">${f.hint}</span></div><div class="mapping-arrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></div><select class="mapping-select" data-field="${f.key}"><option value="">— Ignorar —</option>${opts}</select></div>`}).join('')}
 function isAutoMatch(h,k){const n=h.toLowerCase().replace(/[_\-\s]+/g,'');const m={title:['title','name','description','summary'],maintenance_type:['type','maintenancetype','category'],service_date:['date','servicedate'],odometer:['odometer','mileage','miles','odo'],parts_vendor:['vendor','partsvendor','supplier','shop'],cost:['cost','price','amount','total'],notes:['notes','comment','comments','memo']};return(m[k]||[]).some(x=>n===x||n.includes(x))}
 function getMapping(){const m={};document.querySelectorAll('.mapping-select').forEach(s=>{if(s.value)m[s.value]=s.dataset.field});return m}
 async function importRunDryRun(){const m=getMapping();const mv=Object.values(m);if(!mv.includes('title')){toast('Mapeie o campo Título','error');return}if(!mv.includes('service_date')){toast('Mapeie o campo Data','error');return}const btn=document.getElementById('importNextStep2');btn.disabled=true;btn.textContent='…';try{const fd=new FormData();fd.append('file',csvFile);fd.append('mapping',JSON.stringify(m));fd.append('car_id',importTargetCarId);const r=await fetch('/api/import/preview',{method:'POST',body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error);importPreviewData=d;renderDryRunPreview(d);importGoToStep(3)}catch(e){toast(e.message,'error')}finally{btn.disabled=false;btn.textContent='Pré-visualizar →'}}
-function renderDryRunPreview(d){const s=document.getElementById('importSummary');const inv=d.row_count-d.valid_count;s.innerHTML=`<div class="import-summary-stat"><span class="val">${d.row_count}</span><span class="lbl">Total</span></div><div class="import-summary-stat good"><span class="val">${d.valid_count}</span><span class="lbl">Válidos</span></div>${inv?`<div class="import-summary-stat bad"><span class="val">${inv}</span><span class="lbl">Inválidos</span></div>`:''}`;const eb=document.getElementById('importErrors');if(d.errors.length){eb.style.display='';document.getElementById('importErrorCount').textContent=d.errors.length+' aviso(s)';document.getElementById('importErrorsList').innerHTML=d.errors.map(e=>esc(e)).join('<br>')}else eb.style.display='none';const h=document.getElementById('importPreviewHead'),b=document.getElementById('importPreviewBody');h.innerHTML=['','Linha','Título','Tipo','Data','Odô','Fornecedor','Custo','Problemas'].map(c=>`<th>${c}</th>`).join('');b.innerHTML=d.preview_rows.map(r=>`<tr class="${r._valid?'row-valid':'row-invalid'}"><td><span class="row-status ${r._valid?'valid':'invalid'}"></span></td><td>${r._row_num}</td><td>${esc(r.title)||'—'}</td><td>${esc(r.maintenance_type)}</td><td>${r.service_date||'—'}</td><td>${r.odometer!=null?Number(r.odometer).toLocaleString():'—'}</td><td>${esc(r.parts_vendor)||'—'}</td><td>${r.cost!=null?'$'+Number(r.cost).toFixed(2):'—'}</td><td>${r._errors.length?`<span class="cell-error">${esc(r._errors.join('; '))}</span>`:'✓'}</td></tr>`).join('');const cb=document.getElementById('importCommitBtn');cb.disabled=d.valid_count===0;cb.innerHTML=d.valid_count?`Importar ${d.valid_count}`:'Nenhum'}
+function renderDryRunPreview(d){const s=document.getElementById('importSummary');const inv=d.row_count-d.valid_count;s.innerHTML=`<div class="import-summary-stat"><span class="val">${d.row_count}</span><span class="lbl">Total</span></div><div class="import-summary-stat good"><span class="val">${d.valid_count}</span><span class="lbl">Válidos</span></div>${inv?`<div class="import-summary-stat bad"><span class="val">${inv}</span><span class="lbl">Inválidos</span></div>`:''}`;const eb=document.getElementById('importErrors');if(d.errors.length){eb.style.display='';document.getElementById('importErrorCount').textContent=d.errors.length+' aviso(s)';document.getElementById('importErrorsList').innerHTML=d.errors.map(e=>esc(e)).join('<br>')}else eb.style.display='none';const h=document.getElementById('importPreviewHead'),b=document.getElementById('importPreviewBody');h.innerHTML=['','Linha','Título','Tipo','Data','Odô','Fornecedor','Custo','Problemas'].map(c=>`<th>${c}</th>`).join('');b.innerHTML=d.preview_rows.map(r=>`<tr class="${r._valid?'row-valid':'row-invalid'}"><td><span class="row-status ${r._valid?'valid':'invalid'}"></span></td><td>${r._row_num}</td><td>${esc(r.title)||'—'}</td><td>${esc(maintLabel(r.maintenance_type))}</td><td>${r.service_date||'—'}</td><td>${r.odometer!=null?Number(r.odometer).toLocaleString():'—'}</td><td>${esc(r.parts_vendor)||'—'}</td><td>${r.cost!=null?fmtMoney(r.cost):'—'}</td><td>${r._errors.length?`<span class="cell-error">${esc(r._errors.join('; '))}</span>`:'✓'}</td></tr>`).join('');const cb=document.getElementById('importCommitBtn');cb.disabled=d.valid_count===0;cb.innerHTML=d.valid_count?`Importar ${d.valid_count}`:'Nenhum'}
 async function importCommit(){if(!importPreviewData||!importPreviewData.valid_count)return;const btn=document.getElementById('importCommitBtn');btn.disabled=true;btn.innerHTML='…';try{const r=await fetch('/api/import/commit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({car_id:importTargetCarId,rows:importPreviewData.preview_rows})});const d=await r.json();if(!r.ok)throw new Error(d.error);document.getElementById('importDoneMsg').textContent=`${d.imported} importado(s).${d.skipped?' '+d.skipped+' ignorado(s).':''}`;importGoToStep(4);loadDashboard()}catch(e){toast(e.message,'error');btn.disabled=false;btn.innerHTML='Tentar novamente'}}
 function importReset(){csvFile=null;csvHeaders=[];importPreviewData=null;importTargetCarId=null;document.getElementById('csvFileInput').value='';document.getElementById('csvFileInfo').style.display='none';document.getElementById('importNextStep1').disabled=true;importLoadCars();importGoToStep(1)}
 function importViewCar(){if(importTargetCarId){closeModal('settingsModal');openCarDetail(parseInt(importTargetCarId))}}
@@ -316,6 +368,9 @@ function lightboxNext(){lightboxIndex=(lightboxIndex+1)%lightboxImages.length;do
 function toast(msg,type='success'){const c=document.getElementById('toastContainer'),el=document.createElement('div');el.className='toast '+type;el.textContent=msg;c.appendChild(el);setTimeout(()=>el.remove(),3500)}
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 function formatDate(s){if(!s)return'—';const d=new Date(s+(s.includes('T')?'':'T00:00:00'));return d.toLocaleDateString('pt-BR',{year:'numeric',month:'short',day:'numeric'})}
+function fmtMoney(v,dec=2){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:dec,maximumFractionDigits:dec})}
+const MAINT_TYPES={Maintenance:'Manutenção',Repair:'Reparo',Upgrade:'Melhoria',Inspection:'Vistoria'};
+function maintLabel(t){return MAINT_TYPES[t]||t}
 
 // ── Service Reminders ──────────────────────────────
 const MONTH_DAYS=30.44;
@@ -334,8 +389,8 @@ function reminderCountdown(r){
     }
     const rem=r.miles_remaining;
     if(rem==null)return{big:'\u2014',lbl:'sem referência'};
-    if(rem<=0)return{big:n(Math.abs(rem)),lbl:'milhas atrasadas'};
-    return{big:n(rem),lbl:'milhas restantes'};
+    if(rem<=0)return{big:n(Math.abs(rem)),lbl:'km atrasados'};
+    return{big:n(rem),lbl:'km restantes'};
 }
 function reminderSub(r){
     const n=v=>Number(v).toLocaleString();
@@ -345,8 +400,8 @@ function reminderSub(r){
         return r.next_due_date?`${every} \u00b7 próximo em ${formatDate(r.next_due_date)}`
                               :`${every} \u00b7 adicione um registro de serviço ou uma data da última realização`;
     }
-    const every=`A cada ${n(r.interval_miles)} mi`;
-    return r.next_due_odometer!=null?`${every} \u00b7 próximo em ${n(r.next_due_odometer)} mi`
+    const every=`A cada ${n(r.interval_miles)} km`;
+    return r.next_due_odometer!=null?`${every} \u00b7 próximo em ${n(r.next_due_odometer)} km`
                                     :`${every} \u00b7 adicione um registro de serviço ou uma quilometragem da última realização`;
 }
 function reminderCard(r,showCar){
@@ -465,8 +520,8 @@ function renderMaintResetOptions(){
     const ticked=new Set([...list.querySelectorAll('input:checked')].map(i=>i.value));
     list.innerHTML=maintResetReminders.map(r=>{
         const time=r.interval_type==='time',val=time?sd:odo;
-        const to=val?(time?`\u2192 ${formatDate(val)}`:`\u2192 ${Number(val).toLocaleString()} mi`)
-                    :(time?'defina primeiro a data do serviço':'informe primeiro o odômetro');
+        const to=val?(time?`\u2192 ${formatDate(val)}`:`\u2192 ${Number(val).toLocaleString()} km`)
+                    :(time?'defina primeiro a data do serviço':'informe primeiro a quilometragem');
         return `<label class="reset-row${val?'':' disabled'}">
             <input type="checkbox" name="reset_reminders" value="${r.id}"${val?'':' disabled'}${val&&ticked.has(String(r.id))?' checked':''}>
             <span class="reset-name">${esc(r.title)}</span>
@@ -515,9 +570,9 @@ function carCardReminders(car){
             txt=(a<60?`${a.toLocaleString()} ${a===1?'dia':'dias'}`:`${Math.round(a/MONTH_DAYS)} ${Math.round(a/MONTH_DAYS)===1?'mês':'meses'}`)+(r.days_remaining<=0?' atrasado':'');
         }else{
             const a=Math.abs(r.miles_remaining);
-            txt=`${a.toLocaleString()} mi`+(r.miles_remaining<=0?' atrasado':'');
+            txt=`${a.toLocaleString()} km`+(r.miles_remaining<=0?' atrasado':'');
         }
         return `<div class="car-card-rem ${r.status}"><span class="car-card-rem-name">${esc(r.title)}</span><span class="car-card-rem-val">${txt}</span></div>`;
     }).join('');
-    return `<div class="car-card-rems"><div class="car-card-rems-hd">Upcoming Service</div>${rows}${more>0?`<div class="car-card-rem-more">+${more} more</div>`:''}</div>`;
+    return `<div class="car-card-rems"><div class="car-card-rems-hd">Próximos Serviços</div>${rows}${more>0?`<div class="car-card-rem-more">+${more} mais</div>`:''}</div>`;
 }

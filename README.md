@@ -10,9 +10,9 @@ Desenvolvido e mantido por [Hyprlab](https://hyprlab.co)
 
 - **Suporte a vários usuários**: Cada usuário tem sua própria garagem com veículos e registros de manutenção isolados
 - **Gerenciamento de veículos**: Adicione, edite e exclua veículos com ano, marca, modelo, VIN, data de compra e foto
-- **Registros de manutenção**: Registre reparos, manutenções, upgrades e inspeções com data, quilometragem, fornecedor, custo, anotações e galerias de fotos
+- **Registros de manutenção**: Registre reparos, manutenções, upgrades e vistorias com data, quilometragem, fornecedor, custo, anotações e galerias de fotos
 - **Recibos em PDF**: Envie documentos PDF (recibos, faturas, orçamentos) para qualquer registro de manutenção
-- **Lembretes de serviço**: Defina um intervalo por veículo e veja o que está vencido, vencendo em breve ou em atraso. Um alternador escolhe o que cada contador conta: quilometragem ("fluido da transmissão a cada 30.000 milhas") ou tempo ("fluido de freio a cada 24 meses"). Os lembretes se ancoram aos seus registros de serviço, então registrar o serviço avança automaticamente o próximo vencimento, e ao adicionar um registro você pode marcar quais contadores reiniciar a partir da quilometragem ou da data
+- **Lembretes de serviço**: Defina um intervalo por veículo e veja o que está vencido, vencendo em breve ou em atraso. Um alternador escolhe o que cada contador conta: quilometragem ("fluido da transmissão a cada 30.000 km") ou tempo ("fluido de freio a cada 24 meses"). Os lembretes se ancoram aos seus registros de serviço, então registrar o serviço avança automaticamente o próximo vencimento, e ao adicionar um registro você pode marcar quais contadores reiniciar a partir da quilometragem ou da data
 - **Painel**: Estatísticas rápidas de total de veículos, registros de serviço, dinheiro gasto e serviços pendentes, com intervalos configuráveis e uma lista de serviços próximos em todos os veículos
 - **Busca e ordenação**: Busca ao vivo em veículos e registros de manutenção com várias opções de ordenação
 - **Importação e exportação CSV**: Importe registros de manutenção a partir de arquivos CSV com mapeamento de campos e pré-visualização de dry-run, ou exporte todos os registros de qualquer veículo

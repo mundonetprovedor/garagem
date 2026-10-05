@@ -41,6 +41,9 @@ DEFAULT_PERMS = {'can_add_cars':True,'can_edit_cars':True,'can_delete_cars':True
                  'can_add_records':True,'can_edit_records':True,'can_delete_records':True,
                  'can_import':False,'can_export':True}
 
+# Rótulos em português dos tipos de registro (o banco guarda os valores em inglês)
+MAINT_TYPE_PT = {'Maintenance':'Manutenção','Repair':'Reparo','Upgrade':'Melhoria','Inspection':'Vistoria'}
+
 def allowed_file(fn):
     return '.' in fn and fn.rsplit('.',1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -1170,7 +1173,7 @@ def export_csv(cid):
     writer = csv.writer(output)
     writer.writerow(['Título','Tipo','Data do serviço','Odômetro','Fornecedor','Custo','Observações'])
     for e in entries:
-        writer.writerow([e['title'],e['maintenance_type'],e['service_date'],e['odometer'] or '',e['parts_vendor'] or '',e['cost'] or '',e['notes'] or ''])
+        writer.writerow([e['title'],MAINT_TYPE_PT.get(e['maintenance_type'],e['maintenance_type']),e['service_date'],e['odometer'] or '',e['parts_vendor'] or '',e['cost'] or '',e['notes'] or ''])
     fname = f"{car['year']}_{car['make']}_{car['model']}_maintenance.csv".replace(' ','_')
     return Response(output.getvalue(), mimetype='text/csv', headers={'Content-Disposition':f'attachment; filename="{fname}"'})
 
@@ -1207,7 +1210,8 @@ def csv_preview():
     if 'service_date' not in field_map: missing.append('Data do serviço')
     if missing: return jsonify({'error':f'Obrigatórios: {", ".join(missing)}'}), 400
     valid_types = {'Repair','Maintenance','Upgrade','Inspection'}
-    type_map = {'repair':'Repair','maintenance':'Maintenance','upgrade':'Upgrade','service':'Maintenance','mod':'Upgrade','modification':'Upgrade','fix':'Repair','maint':'Maintenance','inspection':'Inspection','inspect':'Inspection'}
+    type_map = {'repair':'Repair','maintenance':'Maintenance','upgrade':'Upgrade','service':'Maintenance','mod':'Upgrade','modification':'Upgrade','fix':'Repair','maint':'Maintenance','inspection':'Inspection','inspect':'Inspection',
+                'manutencao':'Maintenance','manutenção':'Maintenance','serviço':'Maintenance','servico':'Maintenance','reparo':'Repair','reparação':'Repair','reparacao':'Repair','melhoria':'Upgrade','melhorias':'Upgrade','inspecao':'Inspection','inspeção':'Inspection','vistoria':'Inspection','vistorias':'Inspection'}
     preview_rows=[]; errors=[]; valid_count=0
     file.seek(0)
     try:
