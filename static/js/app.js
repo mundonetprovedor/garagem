@@ -378,6 +378,7 @@ function importViewCar(){if(importTargetCarId){closeModal('settingsModal');openC
 // Modals
 function openModal(id){
     document.getElementById(id).classList.add('open');document.body.style.overflow='hidden';
+    const ov=document.getElementById(id);ov.scrollTop=0;const md=ov.querySelector('.modal');if(md)md.scrollTop=0;
     if(id==='settingsModal')loadSettingsUI();
 }
 function closeModal(id){if(id==='forceChangePwModal'&&CURRENT_USER.must_change_password)return;document.getElementById(id).classList.remove('open');document.body.style.overflow=''}

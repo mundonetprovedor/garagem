@@ -919,6 +919,7 @@ body{
   display:none;align-items:center;justify-content:center;
   z-index:200;padding:20px;
   backdrop-filter:blur(8px);
+  overflow-y:auto;
 }
 .modal-overlay.open{display:flex;animation:fadeIn .2s ease}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
@@ -928,6 +929,7 @@ body{
   border-radius:var(--radius-xl);
   width:100%;max-width:520px;
   max-height:88vh;overflow-x:hidden;overflow-y:auto;
+  margin:auto;
   animation:modalUp .25s ease;
   scrollbar-width:thin;scrollbar-color:var(--border) transparent;
   box-shadow:var(--shadow-lg);
