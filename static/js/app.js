@@ -130,7 +130,7 @@ async function loadDashboard(){
         c.innerHTML=d.recent_entries.map(e=>`
             <div class="recent-item" onclick="goToMaintRecord(${e.car_id},${e.id})">
                 <span class="recent-badge badge-${e.maintenance_type.toLowerCase()}">${maintLabel(e.maintenance_type)}</span>
-                <div class="recent-info"><div class="recent-title">${esc(e.title)}</div><div class="recent-sub">${e.year} ${esc(e.make)} ${esc(e.model)} · ${formatDate(e.service_date)}</div></div>
+                <div class="recent-info"><div class="recent-title">${esc(e.title)}</div><div class="recent-sub">${esc(e.make)} ${esc(e.model)} ${e.year} · ${formatDate(e.service_date)}</div></div>
                 ${e.cost?`<span class="recent-cost">${fmtMoney(e.cost)}</span>`:''}
             </div>`).join('');
     }catch(e){console.error(e)}
@@ -138,7 +138,7 @@ async function loadDashboard(){
 async function goToMaintRecord(carId,maintId){
     currentCarId=carId;
     try{const cr=await fetch('/api/cars/'+carId);const car=await cr.json();
-    document.getElementById('carDetailTitle').textContent=`${car.year} ${car.make} ${car.model}`;
+    document.getElementById('carDetailTitle').textContent=`${car.make} ${car.model} ${car.year}`;
     renderCarHero(car);switchView('car-detail');await loadMaintenance();loadVistorias();
     const mr=await fetch('/api/cars/'+carId+'/maintenance');const entries=await mr.json();
     const entry=entries.find(e=>e.id===maintId);if(entry)openMaintDetail(entry)}catch(e){toast('Falha','error')}
@@ -155,13 +155,13 @@ async function loadCars(){
         <div class="car-card" onclick="openCarDetail(${car.id})">
             <div class="car-card-img">${car.image?`<img src="/uploads/cars/${car.image}" alt="">`:'<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M5 17h14M5 17a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2"/><circle cx="7.5" cy="17" r="2.5"/><circle cx="16.5" cy="17" r="2.5"/></svg>'}</div>
             <div class="car-card-body">
-                <div class="car-card-name">${car.year} ${esc(car.make)} ${esc(car.model)}</div>
+                <div class="car-card-name">${esc(car.make)} ${esc(car.model)} ${car.year}</div>
                 ${isAdmin&&car.owner_name?`<div class="car-card-owner">${esc(car.owner_name)}</div>`:''}
                 ${car.placa?`<div class="car-card-vin">${esc(car.placa)}</div>`:''}
                 <div class="car-card-stats"><span>${car.maintenance_count} registros</span><span>${fmtMoney(car.total_cost,0)}</span>${car.latest_odometer?`<span>${Number(car.latest_odometer).toLocaleString()} km</span>`:''}</div>
                 ${carCardReminders(car)}
             </div>
-            ${hasPerm('can_edit_cars')||hasPerm('can_delete_cars')?`<div class="car-card-actions">${hasPerm('can_edit_cars')?`<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();openEditCarModal(${car.id})">Editar</button>`:''}${hasPerm('can_delete_cars')?`<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteCar(${car.id},'${esc(car.year)} ${esc(car.make)} ${esc(car.model)}')">Excluir</button>`:''}</div>`:''}
+            ${hasPerm('can_edit_cars')||hasPerm('can_delete_cars')?`<div class="car-card-actions">${hasPerm('can_edit_cars')?`<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();openEditCarModal(${car.id})">Editar</button>`:''}${hasPerm('can_delete_cars')?`<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteCar(${car.id},'${esc(car.make)} ${esc(car.model)} ${esc(car.year)}')">Excluir</button>`:''}</div>`:''}
         </div>`).join('')}catch(e){console.error(e)}
 }
 async function submitCar(e){e.preventDefault();const b=document.getElementById('addCarBtn');b.disabled=true;b.textContent='Adicionando…';try{const r=await fetch('/api/cars',{method:'POST',body:new FormData(e.target)});if(!r.ok){let m='Falha';try{m=(await r.json()).error}catch(x){}throw new Error(m)}toast('Adicionado!','success');e.target.reset();resetPreview('carImagePreview');closeModal('addCarModal');loadCars();loadSidebarCars();loadDashboard()}catch(e){toast(e.message,'error')}finally{b.disabled=false;b.textContent='Adicionar Veículo'}}
@@ -170,7 +170,7 @@ async function openEditCarModal(id){try{const r=await fetch('/api/cars/'+id);con
 async function submitEditCar(e){e.preventDefault();const id=document.getElementById('editCarId').value;try{const r=await fetch('/api/cars/'+id,{method:'PUT',body:new FormData(e.target)});if(!r.ok){let m='Falha';try{m=(await r.json()).error}catch(x){}throw new Error(m)}toast('Atualizado','success');closeModal('editCarModal');loadCars();loadSidebarCars();if(currentCarId==id)openCarDetail(parseInt(id))}catch(e){toast(e.message,'error')}}
 async function deleteCar(id,name){if(!confirm(`Excluir "${name}"?`))return;try{await fetch('/api/cars/'+id,{method:'DELETE'});toast('Excluído','success');loadCars();loadSidebarCars();loadDashboard();if(currentCarId==id)switchView('garage')}catch(e){toast('Falha','error')}}
 
-async function openCarDetail(carId){currentCarId=carId;try{const r=await fetch('/api/cars/'+carId);const car=await r.json();document.getElementById('carDetailTitle').textContent=`${car.year} ${car.make} ${car.model}`;renderCarHero(car);switchView('car-detail');setActiveSidebarCar(carId);loadMaintenance();loadReminders();loadVistorias()}catch(e){toast('Falha','error')}}
+async function openCarDetail(carId){currentCarId=carId;try{const r=await fetch('/api/cars/'+carId);const car=await r.json();document.getElementById('carDetailTitle').textContent=`${car.make} ${car.model} ${car.year}`;renderCarHero(car);switchView('car-detail');setActiveSidebarCar(carId);loadMaintenance();loadReminders();loadVistorias()}catch(e){toast('Falha','error')}}
 function renderCarHero(car){document.getElementById('carDetailHero').innerHTML=`${car.image?`<img src="/uploads/cars/${car.image}" alt="">`:'<div class="placeholder-img"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M5 17h14M5 17a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2"/><circle cx="7.5" cy="17" r="2.5"/><circle cx="16.5" cy="17" r="2.5"/></svg></div>'}<div class="detail-meta"><div class="detail-meta-row"><div class="detail-meta-item"><span class="label">Ano</span><span class="value">${car.year}</span></div><div class="detail-meta-item"><span class="label">Marca</span><span class="value">${esc(car.make)}</span></div><div class="detail-meta-item"><span class="label">Modelo</span><span class="value">${esc(car.model)}</span></div></div><div class="detail-meta-row">${car.placa?`<div class="detail-meta-item"><span class="label">Placa</span><span class="value mono">${esc(car.placa)}</span></div>`:''}${car.renavam?`<div class="detail-meta-item"><span class="label">RENAVAM</span><span class="value mono">${esc(car.renavam)}</span></div>`:''}${car.chassi?`<div class="detail-meta-item"><span class="label">Chassi</span><span class="value mono">${esc(car.chassi)}</span></div>`:''}${car.condutor?`<div class="detail-meta-item"><span class="label">Principal Condutor</span><span class="value">${esc(car.condutor)}</span></div>`:''}${car.licenciamento?`<div class="detail-meta-item"><span class="label">Licenciamento</span><span class="value">${formatDate(car.licenciamento)}</span></div>`:''}${car.ipva?`<div class="detail-meta-item"><span class="label">IPVA</span><span class="value">${formatDate(car.ipva)}</span></div>`:''}${car.combustivel?`<div class="detail-meta-item"><span class="label">Combustível</span><span class="value">${esc(car.combustivel)}</span></div>`:''}${car.crv?`<div class="detail-meta-item"><span class="label">CRV</span><span class="value mono">${esc(car.crv)}</span></div>`:''}${car.crlv?`<div class="detail-meta-item"><span class="label">CRLV</span><span class="value">${formatDate(car.crlv)}</span></div>`:''}${car.seguro?`<div class="detail-meta-item"><span class="label">Seguro</span><span class="value">${formatDate(car.seguro)}</span></div>`:''}${car.vistoria_data?`<div class="detail-meta-item"><span class="label">Última Vistoria</span><span class="value">${formatDate(car.vistoria_data)}</span></div>`:''}${car.vistoria_validade?`<div class="detail-meta-item"><span class="label">Validade da Vistoria</span><span class="value">${formatDate(car.vistoria_validade)}</span></div>`:''}${car.km_atual!=null?`<div class="detail-meta-item"><span class="label">KM Atual</span><span class="value">${Number(car.km_atual).toLocaleString()}</span></div>`:''}${car.purchase_date?`<div class="detail-meta-item"><span class="label">Comprado em</span><span class="value">${formatDate(car.purchase_date)}</span></div>`:''}</div></div>`}
 function exportCarCSV(){if(currentCarId)window.location.href='/api/cars/'+currentCarId+'/export'}
 function openImportForCar(){openModal('settingsModal');switchSettingsTab('import');setTimeout(()=>{document.getElementById('importCarSelect').value=currentCarId},200)}
@@ -361,7 +361,7 @@ async function deleteUser(id,un){if(!confirm(`Excluir "${un}"?`))return;try{cons
 // CSV Import
 let csvFile=null,csvHeaders=[],importPreviewData=null,importTargetCarId=null;
 function importGoToStep(s){for(let i=1;i<=4;i++){document.getElementById('importStep'+i).style.display='none';document.getElementById('importStep'+i+'Indicator').classList.remove('active','done')}document.getElementById('importStep'+s).style.display='';document.getElementById('importStep'+s+'Indicator').classList.add('active');for(let i=1;i<s;i++)document.getElementById('importStep'+i+'Indicator').classList.add('done')}
-function importLoadCars(){fetch('/api/cars').then(r=>r.json()).then(cars=>{const sel=document.getElementById('importCarSelect');const cv=sel.value;sel.innerHTML='<option value="">— Selecionar —</option>';cars.forEach(c=>{sel.innerHTML+=`<option value="${c.id}">${c.year} ${esc(c.make)} ${esc(c.model)}</option>`});if(cv)sel.value=cv})}
+function importLoadCars(){fetch('/api/cars').then(r=>r.json()).then(cars=>{const sel=document.getElementById('importCarSelect');const cv=sel.value;sel.innerHTML='<option value="">— Selecionar —</option>';cars.forEach(c=>{sel.innerHTML+=`<option value="${c.id}">${esc(c.make)} ${esc(c.model)} ${c.year}</option>`});if(cv)sel.value=cv})}
 function onCsvFileSelected(input){const info=document.getElementById('csvFileInfo'),btn=document.getElementById('importNextStep1');if(input.files&&input.files[0]){csvFile=input.files[0];info.style.display='flex';info.innerHTML=`<span class="file-name">${esc(csvFile.name)}</span> (${(csvFile.size/1024).toFixed(1)} KB)`;const reader=new FileReader();reader.onload=e=>{const t=e.target.result;csvHeaders=parseCSVLine(t.split(/\r?\n/)[0]);const rc=t.split(/\r?\n/).filter(l=>l.trim()).length-1;info.innerHTML+=` · ${csvHeaders.length} colunas · ${rc} linhas`};reader.readAsText(csvFile);btn.disabled=!document.getElementById('importCarSelect').value}else{csvFile=null;csvHeaders=[];info.style.display='none';btn.disabled=true}}
 document.addEventListener('change',e=>{if(e.target.id==='importCarSelect'){const btn=document.getElementById('importNextStep1');if(btn)btn.disabled=!(e.target.value&&csvFile)}});
 function parseCSVLine(l){const r=[];let c='',q=false;for(let i=0;i<l.length;i++){const ch=l[i];if(q){if(ch==='"'&&l[i+1]==='"'){c+='"';i++}else if(ch==='"')q=false;else c+=ch}else{if(ch==='"')q=true;else if(ch===','){r.push(c.trim());c=''}else c+=ch}}r.push(c.trim());return r}
@@ -584,7 +584,7 @@ async function loadSidebarCars(){
         const cars=await r.json();
         const el=document.getElementById('sidebarCars');if(!el)return;
         el.innerHTML=cars.map(c=>{
-            const name=`${c.year} ${c.make} ${c.model}`;
+            const name=`${c.make} ${c.model} ${c.year}`;
             return `<button class="nav-car" data-car="${c.id}" onclick="openCarDetail(${c.id})" title="${esc(name)}"><span class="nav-car-name">${esc(name)}</span></button>`;
         }).join('');
         setActiveSidebarCar(currentCarId);
