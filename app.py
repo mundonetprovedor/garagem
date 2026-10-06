@@ -822,6 +822,64 @@ def add_car():
     conn.close()
     return jsonify(car), 201
 
+@app.route('/api/cars/import', methods=['POST'])
+@perm_required('can_add_cars')
+def import_cars():
+    if 'file' not in request.files: return jsonify({'error':'Nenhum arquivo enviado'}), 400
+    file = request.files['file']
+    if not file.filename.lower().endswith('.csv'): return jsonify({'error':'Deve ser .csv'}), 400
+    try:
+        raw = file.read()
+        try: text = raw.decode('utf-8-sig')
+        except: text = raw.decode('latin-1')
+    except Exception as e: return jsonify({'error':f'Erro ao ler: {e}'}), 400
+    try:
+        reader = csv.DictReader(io.StringIO(text))
+        rows = list(reader)
+    except Exception as e: return jsonify({'error':f'CSV inválido: {e}'}), 400
+    if not rows: return jsonify({'error':'Planilha vazia'}), 400
+    import unicodedata
+    def norm(h):
+        h = unicodedata.normalize('NFKD', h.strip().lower()).encode('ascii','ignore').decode()
+        return h.replace(' ','_')
+    aliases = {'ano':'year','ano_fabricacao':'year','ano_modelo':'year','marca':'make','modelo':'model','versao':'model2','chassi':'chassi','condutor':'condutor','condutor_principal':'condutor','km':'km_atual','km_atual':'km_atual','licenciamento':'licenciamento','ipva':'ipva','combustivel':'combustivel','crv':'crv','crlv':'crlv','seguro':'seguro','placa':'placa','renavam':'renavam','vistoria_data':'vistoria_data','vistoria_validade':'vistoria_validade'}
+    keymap = {}
+    for h in (reader.fieldnames or []):
+        n = norm(h)
+        keymap[h] = aliases.get(n, n)
+    ok=0; skipped=0; errors=[]
+    conn = get_db()
+    for i,row in enumerate(rows, start=2):
+        r = {keymap[k]:(v.strip() if isinstance(v,str) else v) for k,v in row.items()}
+        def gv(k):
+            v = r.get(k)
+            if v is None: return None
+            v = str(v).strip()
+            if v in ('','-','--',' - ') or v.lower()=='none': return None
+            return v
+        make = gv('make'); model = gv('model')
+        if r.get('model2'): model = (model or '') + (' ' + r['model2'].strip() if model else r['model2'].strip())
+        year_raw = gv('year')
+        year = None
+        if year_raw:
+            m = re.search(r'\d{4}', year_raw)
+            year = int(m.group()) if m else None
+        if not make or not model:
+            skipped += 1; errors.append(f'Linha {i}: marca/modelo ausentes'); continue
+        placa = gv('placa'); renavam = gv('renavam'); chassi = gv('chassi')
+        try:
+            cur = conn.execute('INSERT INTO cars (user_id,year,make,model,vin,image,purchase_date,placa,renavam,condutor,chassi,licenciamento,ipva,combustivel,crv,crlv,seguro,vistoria_data,vistoria_validade,km_atual) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                (g.user['id'], year if year is not None else '', make, model, None, None, None,
+                 placa, renavam, gv('condutor'), chassi, gv('licenciamento'), gv('ipva'), gv('combustivel'), gv('crv'), gv('crlv'), gv('seguro'), None, None, int(float(re.sub(r'[^\d.]','',gv('km_atual')))) if gv('km_atual') and re.sub(r'[^\d.]','',gv('km_atual')) else None))
+            vd = gv('vistoria_data'); vv = gv('vistoria_validade')
+            if vd or vv:
+                conn.execute('INSERT INTO vistorias (car_id,vistoria_data,validade) VALUES (?,?,?)', (cur.lastrowid, vd or vv, vv or None))
+            ok += 1
+        except Exception as e:
+            skipped += 1; errors.append(f'Linha {i}: {e}')
+    conn.commit(); conn.close()
+    return jsonify({'imported':ok,'skipped':skipped,'errors':errors[:20]})
+
 @app.route('/api/cars/<int:cid>', methods=['GET'])
 @login_required
 def get_car(cid):
