@@ -497,12 +497,9 @@ def parse_reminder_input(d, base=None):
     except ValueError:
         return None, 'Valores de quilometragem e intervalo devem ser números inteiros'
 
-    if not t: return None, 'Título obrigatório'
     if itype == 'time':
-        if not iv_mo or iv_mo <= 0: return None, 'Intervalo em meses obrigatório e deve ser maior que zero'
         if ld_date and _rem_date(ld_date) is None: return None, 'A data da última execução deve ser uma data válida'
     else:
-        if not iv_mi or iv_mi <= 0: return None, 'Intervalo em quilometragem obrigatório e deve ser maior que zero'
         if ld_odo is not None and ld_odo < 0: return None, 'A quilometragem da última execução não pode ser negativa'
     return {'title': t, 'interval_type': itype, 'interval_miles': iv_mi or 0, 'interval_months': iv_mo,
             'last_done_odometer': ld_odo, 'last_done_date': ld_date, 'notes': n or None}, None
@@ -805,7 +802,6 @@ def add_car():
     crlv=request.form.get('crlv','').strip(); seguro=request.form.get('seguro','').strip()
     vis_data=request.form.get('vistoria_data','').strip(); vis_val=request.form.get('vistoria_validade','').strip()
     km=request.form.get('km_atual','').strip()
-    if not year or not make or not model: return jsonify({'error':'Ano, marca e modelo obrigatórios'}), 400
     image = save_upload(request.files.get('image'), 'cars') if 'image' in request.files else None
     conn = get_db()
     cur = conn.execute('INSERT INTO cars (user_id,year,make,model,vin,image,purchase_date,placa,renavam,condutor,chassi,licenciamento,ipva,combustivel,crv,crlv,seguro,vistoria_data,vistoria_validade,km_atual) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
@@ -972,7 +968,6 @@ def add_maintenance(cid):
     sd=request.form.get('service_date','').strip(); odo=request.form.get('odometer','').strip()
     v=request.form.get('parts_vendor','').strip(); c=request.form.get('cost','').strip()
     n=request.form.get('notes','').strip(); drv=request.form.get('driver','').strip()
-    if not t or not mt or not sd: conn.close(); return jsonify({'error':'Título, tipo e data obrigatórios'}), 400
     if mt not in ('Repair','Maintenance','Upgrade','Inspection'): conn.close(); return jsonify({'error':'Tipo inválido'}), 400
     cur = conn.execute('INSERT INTO maintenance (car_id,title,maintenance_type,service_date,odometer,parts_vendor,cost,notes,driver) VALUES (?,?,?,?,?,?,?,?,?)',
         (cid,t,mt,sd,int(odo) if odo else None,v or None,float(c) if c else None,n or None,drv or None))
@@ -1004,7 +999,6 @@ def update_maintenance(mid):
     sd=request.form.get('service_date',entry['service_date']).strip(); odo=request.form.get('odometer','').strip()
     v=request.form.get('parts_vendor',entry['parts_vendor'] or '').strip(); c=request.form.get('cost','').strip()
     n=request.form.get('notes',entry['notes'] or '').strip(); drv=request.form.get('driver',entry['driver'] or '').strip()
-    if not t or not mt or not sd: conn.close(); return jsonify({'error':'Título, tipo e data obrigatórios'}), 400
     if mt not in ('Repair','Maintenance','Upgrade','Inspection'): conn.close(); return jsonify({'error':'Tipo inválido'}), 400
     conn.execute('UPDATE maintenance SET title=?,maintenance_type=?,service_date=?,odometer=?,parts_vendor=?,cost=?,notes=?,driver=? WHERE id=?',
         (t,mt,sd,int(odo) if odo else entry['odometer'],v or None,float(c) if c else entry['cost'],n or None,drv or None,mid))
@@ -1118,7 +1112,6 @@ def add_vistoria(cid):
     vd = request.form.get('vistoria_data','').strip()
     val = request.form.get('validade','').strip()
     obs = request.form.get('observacao','').strip()
-    if not vd: conn.close(); return jsonify({'error':'Data da vistoria obrigatória'}), 400
     cur = conn.execute('INSERT INTO vistorias (car_id,vistoria_data,validade,observacao) VALUES (?,?,?,?)',
                        (cid, vd, val or None, obs or None))
     vid = cur.lastrowid
@@ -1286,7 +1279,6 @@ def csv_preview():
     car_id = request.form.get('car_id','')
     try: mapping = json.loads(mapping_raw)
     except: return jsonify({'error':'Mapeamento inválido'}), 400
-    if not car_id: return jsonify({'error':'Veículo obrigatório'}), 400
     conn = get_db()
     car = can_access_car(conn, car_id, g.user)
     conn.close()
@@ -1365,7 +1357,6 @@ def csv_preview():
 def csv_commit():
     data = request.get_json() or {}
     car_id=data.get('car_id'); rows=data.get('rows',[])
-    if not car_id or not rows: return jsonify({'error':'ID do carro e linhas obrigatórios'}), 400
     conn = get_db()
     car = can_access_car(conn, car_id, g.user)
     if not car: conn.close(); return jsonify({'error':'Não encontrado'}), 404
@@ -1418,7 +1409,6 @@ def add_fuelup(cid):
     pr = request.form.get('price','').strip(); odo = request.form.get('odometer','').strip()
     v = request.form.get('parts_vendor','').strip(); drv = request.form.get('driver','').strip()
     n = request.form.get('notes','').strip()
-    if not d: conn.close(); return jsonify({'error':'Data obrigatória'}), 400
     cur = conn.execute('INSERT INTO fuelups (car_id,fuel_date,liters,price,odometer,parts_vendor,driver,notes) VALUES (?,?,?,?,?,?,?,?)',
         (cid,d,float(lit) if lit else None,float(pr) if pr else None,int(odo) if odo else None,v or None,drv or None,n or None))
     conn.commit()
@@ -1453,7 +1443,6 @@ def add_infraction(cid):
     d = request.form.get('infraction_date','').strip(); desc = request.form.get('description','').strip()
     val = request.form.get('value','').strip(); pts = request.form.get('points','').strip()
     st = request.form.get('status','Pendente').strip(); n = request.form.get('notes','').strip()
-    if not d: conn.close(); return jsonify({'error':'Data obrigatória'}), 400
     if st not in ('Pendente','Paga','Recorrida','Cancelada'): st = 'Pendente'
     cur = conn.execute('INSERT INTO infractions (car_id,infraction_date,description,value,points,status,notes) VALUES (?,?,?,?,?,?,?)',
         (cid,d,desc or None,float(val) if val else None,int(pts) if pts else None,st,n or None))
