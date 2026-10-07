@@ -6,7 +6,23 @@ document.addEventListener('DOMContentLoaded',()=>{
     document.getElementById('sidebarVersion').textContent='v'+APP_VERSION;
     loadSettings().then(()=>{applyTheme();loadDashboard();loadCars();loadSidebarCars()});
     if(CURRENT_USER.must_change_password)openModal('forceChangePwModal');
+    initDragDropUpload();
 });
+
+function initDragDropUpload(){
+    document.querySelectorAll('.file-upload-label').forEach(label=>{
+        const input=label.querySelector('input[type="file"]');
+        if(!input)return;
+        label.addEventListener('dragover',e=>{e.preventDefault();e.stopPropagation();label.classList.add('drag-over')});
+        label.addEventListener('dragleave',e=>{e.preventDefault();e.stopPropagation();label.classList.remove('drag-over')});
+        label.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();label.classList.remove('drag-over');
+            if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length){
+                input.files=e.dataTransfer.files;
+                input.dispatchEvent(new Event('change',{bubbles:true}));
+            }
+        });
+    });
+}
 
 function applyPermVisibility(){
     document.querySelectorAll('.admin-only').forEach(el=>{el.style.display=CURRENT_USER.role==='admin'?'':'none'});

@@ -1037,6 +1037,7 @@ body{
 }
 .file-upload:hover .file-upload-label{border-color:var(--accent);color:var(--text-secondary)}
 .file-upload-label.has-preview{padding:0;border-style:solid;overflow:hidden;display:block;height:200px}
+.file-upload-label.drag-over{border-color:var(--accent);color:var(--accent);background:rgba(88,166,255,0.08)}
 .file-upload-label.has-preview img{width:100%;height:100%;object-fit:cover;display:block}
 .gallery-thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .gallery-thumb{width:64px;height:64px;border-radius:var(--radius-sm);object-fit:cover;border:2px solid var(--border)}
