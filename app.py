@@ -792,7 +792,7 @@ def get_cars():
 @app.route('/api/cars', methods=['POST'])
 @perm_required('can_add_cars')
 def add_car():
-    year=request.form.get('year'); make=request.form.get('make','').strip()
+    year=(request.form.get('year') or '').strip(); make=request.form.get('make','').strip()
     model=request.form.get('model','').strip(); vin=request.form.get('vin','').strip()
     pd=request.form.get('purchase_date','').strip()
     placa=request.form.get('placa','').strip(); renavam=request.form.get('renavam','').strip()
@@ -805,7 +805,7 @@ def add_car():
     image = save_upload(request.files.get('image'), 'cars') if 'image' in request.files else None
     conn = get_db()
     cur = conn.execute('INSERT INTO cars (user_id,year,make,model,vin,image,purchase_date,placa,renavam,condutor,chassi,licenciamento,ipva,combustivel,crv,crlv,seguro,vistoria_data,vistoria_validade,km_atual) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                       (g.user['id'], int(year), make, model, vin or None, image, pd or None,
+                       (g.user['id'], int(year) if year.isdigit() else '', make, model, vin or None, image, pd or None,
                         placa or None, renavam or None, condutor or None, chassi or None, lic or None, ipva or None,
                         combustivel or None, crv or None, crlv or None, seguro or None, None, None, int(km) if km.isdigit() else None))
     # Vistoria enviada junto do cadastro vira a primeira linha do histórico
@@ -911,7 +911,7 @@ def update_car(cid):
             if os.path.exists(p): os.remove(p)
         image = save_upload(request.files['image'],'cars')
     conn.execute('UPDATE cars SET year=?,make=?,model=?,vin=?,image=?,purchase_date=?,placa=?,renavam=?,condutor=?,chassi=?,licenciamento=?,ipva=?,combustivel=?,crv=?,crlv=?,seguro=?,vistoria_data=?,vistoria_validade=?,km_atual=? WHERE id=?',
-                 (int(year) if year.isdigit() else None,make,model,vin or None,image,pd or None,placa or None,renavam or None,condutor or None,chassi or None,lic or None,ipva or None,combustivel or None,crv or None,crlv or None,seguro or None,car['vistoria_data'],car['vistoria_validade'],int(km) if km.isdigit() else None,cid))
+                 (int(year) if year.isdigit() else '',make,model,vin or None,image,pd or None,placa or None,renavam or None,condutor or None,chassi or None,lic or None,ipva or None,combustivel or None,crv or None,crlv or None,seguro or None,car['vistoria_data'],car['vistoria_validade'],int(km) if km.isdigit() else None,cid))
     conn.commit()
     updated = dict(conn.execute('SELECT * FROM cars WHERE id=?',(cid,)).fetchone())
     updated['vistoria_data'], updated['vistoria_validade'] = latest_vistoria(conn, cid, updated.get('vistoria_data'), updated.get('vistoria_validade'))
