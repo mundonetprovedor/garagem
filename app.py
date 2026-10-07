@@ -28,13 +28,20 @@ from flask import (Flask, render_template, request, jsonify,
 APP_VERSION = '0.3.2'
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'change-this-to-a-random-secret-key-in-production')
+secret_key = os.environ.get('SECRET_KEY', '')
+if not secret_key or secret_key.lower().startswith(('change-me', 'change-this')):
+    raise RuntimeError('SECRET_KEY deve ser definida com um valor aleatório antes de iniciar a aplicação.')
+app.config['SECRET_KEY'] = secret_key
 app.config['UPLOAD_FOLDER'] = os.environ.get('UPLOAD_FOLDER', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads'))
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', '').lower() in ('1', 'true', 'yes')
 
 ALLOWED_EXTENSIONS = {'png','jpg','jpeg','gif','webp','pdf'}
 ROLES = {'admin','editor'}
 DATABASE = os.environ.get('DATABASE_PATH', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'garage_logbook.db'))
+PASSWORD_MIN_LENGTH = 12
 
 # Permissões padrão do editor
 DEFAULT_PERMS = {'can_add_cars':True,'can_edit_cars':True,'can_delete_cars':True,
@@ -53,6 +60,13 @@ def hash_password(pw, salt=None):
 
 def verify_password(pw, stored):
     return hash_password(pw, stored.split('$',1)[0]) == stored
+
+def password_error(password):
+    if len(password) < PASSWORD_MIN_LENGTH:
+        return f'A senha deve ter pelo menos {PASSWORD_MIN_LENGTH} caracteres'
+    if not any(char.isalpha() for char in password) or not any(char.isdigit() for char in password):
+        return 'A senha deve conter ao menos uma letra e um número'
+    return None
 
 def get_db():
     conn = sqlite3.connect(DATABASE, timeout=30)
@@ -179,10 +193,11 @@ def _init_db():
     if conn.execute('SELECT COUNT(*) as c FROM users').fetchone()['c'] == 0:
         # OR IGNORE: o gunicorn executa vários workers, cada um importando este módulo.
         # Sem isso, os perdedores da corrida falham no username UNIQUE.
+        initial_admin_password = os.environ.get('ADMIN_PASSWORD') or secrets.token_urlsafe(18)
         cur = conn.execute('INSERT OR IGNORE INTO users (username,password,display_name,role,permissions,must_change_password) VALUES (?,?,?,?,?,?)',
-                     ('admin', hash_password('admin'), 'Administrador', 'admin', '{}', 1))
+                     ('admin', hash_password(initial_admin_password), 'Administrador', 'admin', '{}', 1))
         if cur.rowcount:
-            print("\n  Admin padrão: admin / admin — altere imediatamente!\n")
+            print(f"\n  Admin inicial: admin / {initial_admin_password} — altere imediatamente!\n")
     conn.commit()
     # Migrações
     try:
@@ -579,6 +594,25 @@ def perm_required(perm):
 @app.route('/uploads/<path:filename>')
 @login_required
 def serve_upload(filename):
+    # Os nomes gravados pelo aplicativo são UUIDs. Aceitar somente esse formato
+    # impede que um caminho arbitrário seja usado para consultar o armazenamento.
+    parts = filename.replace('\\', '/').split('/')
+    if len(parts) != 2 or parts[0] not in {'cars', 'maintenance', 'vistorias'}:
+        return jsonify({'error': 'Arquivo não encontrado'}), 404
+    folder, stored_name = parts
+    if not re.fullmatch(r'[0-9a-f]{32}\.(?:png|jpg|jpeg|gif|webp|pdf)', stored_name):
+        return jsonify({'error': 'Arquivo não encontrado'}), 404
+    conn = get_db()
+    if folder == 'cars':
+        row = conn.execute('SELECT id AS car_id FROM cars WHERE image=?', (stored_name,)).fetchone()
+    elif folder == 'maintenance':
+        row = conn.execute('SELECT m.car_id FROM maintenance_images mi JOIN maintenance m ON mi.maintenance_id=m.id WHERE mi.filename=?', (stored_name,)).fetchone()
+    else:
+        row = conn.execute('SELECT v.car_id FROM vistoria_images vi JOIN vistorias v ON vi.vistoria_id=v.id WHERE vi.filename=?', (stored_name,)).fetchone()
+    allowed = row and can_access_car(conn, row['car_id'], g.user)
+    conn.close()
+    if not allowed:
+        return jsonify({'error': 'Arquivo não encontrado'}), 404
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 @app.route('/login')
@@ -629,7 +663,8 @@ def api_change_password():
     data = request.get_json() or {}
     cur, new = data.get('current_password',''), data.get('new_password','')
     if not cur or not new: return jsonify({'error':'Ambas as senhas são obrigatórias'}), 400
-    if len(new)<4: return jsonify({'error':'Mínimo de 4 caracteres'}), 400
+    error = password_error(new)
+    if error: return jsonify({'error': error}), 400
     conn = get_db()
     u = conn.execute('SELECT password FROM users WHERE id=?',(g.user['id'],)).fetchone()
     if not verify_password(cur, u['password']): conn.close(); return jsonify({'error':'Senha atual incorreta'}), 401
@@ -685,7 +720,8 @@ def create_user():
     perms=data.get('permissions',{})
     if not un or not pw: return jsonify({'error':'Usuário e senha obrigatórios'}), 400
     if role not in ROLES: return jsonify({'error':'Papel inválido'}), 400
-    if len(pw)<4: return jsonify({'error':'Mínimo de 4 caracteres'}), 400
+    error = password_error(pw)
+    if error: return jsonify({'error': error}), 400
     conn = get_db()
     if conn.execute('SELECT id FROM users WHERE username=?',(un,)).fetchone():
         conn.close(); return jsonify({'error':'Nome de usuário já existe'}), 409
@@ -714,7 +750,8 @@ def update_user(uid):
             conn.close(); return jsonify({'error':'Não é possível remover o último admin'}), 400
     perm_str = json.dumps(perms) if perms is not None else user['permissions']
     if npw:
-        if len(npw)<4: conn.close(); return jsonify({'error':'Mínimo de 4 caracteres'}), 400
+        error = password_error(npw)
+        if error: conn.close(); return jsonify({'error': error}), 400
         conn.execute('UPDATE users SET display_name=?,role=?,permissions=?,password=? WHERE id=?',(dn,role,perm_str,hash_password(npw),uid))
     else:
         conn.execute('UPDATE users SET display_name=?,role=?,permissions=? WHERE id=?',(dn,role,perm_str,uid))
@@ -1391,6 +1428,7 @@ def _parse_date(raw):
 # ── Estatísticas do Painel (por usuário) ───────────────
 
 @app.route('/api/cars/<int:cid>/fuelups', methods=['GET'])
+@login_required
 def get_fuelups(cid):
     conn = get_db()
     car = can_access_car(conn, cid, g.user)
@@ -1417,6 +1455,7 @@ def add_fuelup(cid):
     return jsonify(row), 201
 
 @app.route('/api/fuelups/<int:fid>', methods=['DELETE'])
+@perm_required('can_delete_records')
 def delete_fuelup(fid):
     conn = get_db()
     row = conn.execute('SELECT * FROM fuelups WHERE id=?',(fid,)).fetchone()
@@ -1426,6 +1465,7 @@ def delete_fuelup(fid):
     return jsonify({'ok':True})
 
 @app.route('/api/cars/<int:cid>/infractions', methods=['GET'])
+@login_required
 def get_infractions(cid):
     conn = get_db()
     car = can_access_car(conn, cid, g.user)
@@ -1452,6 +1492,7 @@ def add_infraction(cid):
     return jsonify(row), 201
 
 @app.route('/api/infractions/<int:iid>', methods=['DELETE'])
+@perm_required('can_delete_records')
 def delete_infraction(iid):
     conn = get_db()
     row = conn.execute('SELECT * FROM infractions WHERE id=?',(iid,)).fetchone()
@@ -1461,6 +1502,7 @@ def delete_infraction(iid):
     return jsonify({'ok':True})
 
 @app.route('/api/alerts')
+@login_required
 def get_alerts():
     from datetime import date as _date
     conn = get_db()
@@ -1487,6 +1529,7 @@ def get_alerts():
     return jsonify(alerts)
 
 @app.route('/api/fleet/report')
+@login_required
 def fleet_report():
     conn = get_db()
     if g.user['role'] == 'admin':
@@ -1507,6 +1550,7 @@ def fleet_report():
     return jsonify(rows)
 
 @app.route('/api/export/fleet')
+@perm_required('can_export')
 def export_fleet():
     import csv, io as _io
     conn = get_db()

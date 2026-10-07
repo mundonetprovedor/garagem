@@ -41,7 +41,7 @@
         </div>
         <div id="pwChangePanel" class="pw-change-panel">
             <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:18px;text-align:center">Você deve alterar sua senha antes de continuar.</p>
-            <div class="form-group"><label>Nova Senha</label><input type="password" id="newPwFirst" placeholder="Mínimo de 4 caracteres" autocomplete="new-password"></div>
+            <div class="form-group"><label>Nova Senha</label><input type="password" id="newPwFirst" placeholder="Mínimo de 12 caracteres, letra e número" autocomplete="new-password"></div>
             <div class="form-group"><label>Confirmar Senha</label><input type="password" id="confirmPwFirst" autocomplete="new-password"></div>
             <button class="btn-login" onclick="doFirstPwChange()">Definir Nova Senha</button>
             <div class="error-msg" id="pwChangeError"></div>
@@ -54,7 +54,7 @@
         document.getElementById('username').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('password').focus()});
         document.getElementById('confirmPwFirst').addEventListener('keydown',e=>{if(e.key==='Enter')doFirstPwChange()});
         async function doLogin(){const btn=document.getElementById('loginBtn'),err=document.getElementById('loginError');const u=document.getElementById('username').value.trim(),p=document.getElementById('password').value;err.textContent='';if(!u||!p){err.textContent='Informe usuário e senha';return}btn.disabled=true;btn.textContent='Entrando…';try{const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});const d=await r.json();if(!r.ok)throw new Error(d.error);if(d.must_change_password){tempOldPw=p;document.getElementById('loginPanel').classList.add('hidden');document.getElementById('pwChangePanel').classList.add('active');document.getElementById('newPwFirst').focus()}else{window.location.href='/'}}catch(e){err.textContent=e.message}finally{btn.disabled=false;btn.textContent='Entrar'}}
-        async function doFirstPwChange(){const err=document.getElementById('pwChangeError');const np=document.getElementById('newPwFirst').value,cp=document.getElementById('confirmPwFirst').value;err.textContent='';if(!np||!cp){err.textContent='Preencha ambos os campos';return}if(np!==cp){err.textContent='As senhas não coincidem';return}if(np.length<4){err.textContent='Mínimo de 4 caracteres';return}try{const r=await fetch('/api/auth/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:tempOldPw,new_password:np})});const d=await r.json();if(!r.ok)throw new Error(d.error);window.location.href='/'}catch(e){err.textContent=e.message}}
+        async function doFirstPwChange(){const err=document.getElementById('pwChangeError');const np=document.getElementById('newPwFirst').value,cp=document.getElementById('confirmPwFirst').value;err.textContent='';if(!np||!cp){err.textContent='Preencha ambos os campos';return}if(np!==cp){err.textContent='As senhas não coincidem';return}if(np.length<12||!/[A-Za-z]/.test(np)||!/\d/.test(np)){err.textContent='Use ao menos 12 caracteres, incluindo uma letra e um número';return}try{const r=await fetch('/api/auth/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:tempOldPw,new_password:np})});const d=await r.json();if(!r.ok)throw new Error(d.error);window.location.href='/'}catch(e){err.textContent=e.message}}
     </script>
 </body>
 </html>

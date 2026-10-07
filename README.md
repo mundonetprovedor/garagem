@@ -156,9 +156,16 @@ Abra seu navegador em `http://localhost:5000` (ou a porta que você configurou).
 | | |
 |---|---|
 | **Usuário** | `admin` |
-| **Senha** | `admin` |
+| **Senha** | O valor de `ADMIN_PASSWORD`, ou uma senha aleatória exibida nos logs no primeiro início |
 
 Você será solicitado a definir uma nova senha no primeiro login.
+As novas senhas devem ter pelo menos 12 caracteres, incluindo uma letra e um número.
+
+Se `ADMIN_PASSWORD` não estiver configurada, consulte a senha inicial com:
+
+```bash
+docker compose logs garage-logbook
+```
 
 ---
 
@@ -182,9 +189,11 @@ Toda a configuração é gerenciada pelo arquivo `.env`. O arquivo `.env.example
 | Variável | Obrigatória | Descrição | Padrão |
 |---|---|---|---|
 | `SECRET_KEY` | **Sim** | Chave de criptografia de sessão do Flask | Nenhuma |
+| `ADMIN_PASSWORD` | Não | Senha inicial do administrador, usada apenas ao criar o banco | Gerada e exibida nos logs |
 | `APP_PORT` | Não | Porta em que o app fica acessível | `5000` |
 | `DATABASE_PATH` | Não | Caminho do banco de dados dentro do container | `/data/garage_logbook.db` |
 | `UPLOAD_FOLDER` | Não | Caminho de uploads dentro do container | `/data/uploads` |
+| `SESSION_COOKIE_SECURE` | Não | Envia o cookie de sessão somente por HTTPS | `false` |
 
 > **Nota:** O arquivo `.env` contém sua chave secreta e não deve ser commitado no controle de versão nem compartilhado publicamente.
 

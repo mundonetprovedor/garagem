@@ -12,7 +12,6 @@ COPY . .
 RUN mkdir -p /data/uploads/cars /data/uploads/maintenance /data/uploads/vistorias
 ENV DATABASE_PATH=/data/garage_logbook.db
 ENV UPLOAD_FOLDER=/data/uploads
-ENV SECRET_KEY=change-me-in-docker-compose
 ENV PYTHONUNBUFFERED=1
 EXPOSE 5000
 CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "--access-logfile", "-", "--error-logfile", "-", "--timeout", "120", "app:app"]
