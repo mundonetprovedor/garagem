@@ -894,7 +894,7 @@ def update_car(cid):
     conn = get_db()
     car = can_access_car(conn, cid, g.user)
     if not car: conn.close(); return jsonify({'error':'Não encontrado'}), 404
-    year=request.form.get('year',car['year']); make=request.form.get('make',car['make']).strip()
+    year=str(request.form.get('year',car['year']) or '').strip(); make=request.form.get('make',car['make']).strip()
     model=request.form.get('model',car['model']).strip(); vin=request.form.get('vin',car['vin'] or '').strip()
     pd=request.form.get('purchase_date',car['purchase_date'] or '').strip()
     placa=request.form.get('placa',car['placa'] or '').strip(); renavam=request.form.get('renavam',car['renavam'] or '').strip()
@@ -911,7 +911,7 @@ def update_car(cid):
             if os.path.exists(p): os.remove(p)
         image = save_upload(request.files['image'],'cars')
     conn.execute('UPDATE cars SET year=?,make=?,model=?,vin=?,image=?,purchase_date=?,placa=?,renavam=?,condutor=?,chassi=?,licenciamento=?,ipva=?,combustivel=?,crv=?,crlv=?,seguro=?,vistoria_data=?,vistoria_validade=?,km_atual=? WHERE id=?',
-                 (int(year),make,model,vin or None,image,pd or None,placa or None,renavam or None,condutor or None,chassi or None,lic or None,ipva or None,combustivel or None,crv or None,crlv or None,seguro or None,car['vistoria_data'],car['vistoria_validade'],int(km) if km.isdigit() else None,cid))
+                 (int(year) if year.isdigit() else None,make,model,vin or None,image,pd or None,placa or None,renavam or None,condutor or None,chassi or None,lic or None,ipva or None,combustivel or None,crv or None,crlv or None,seguro or None,car['vistoria_data'],car['vistoria_validade'],int(km) if km.isdigit() else None,cid))
     conn.commit()
     updated = dict(conn.execute('SELECT * FROM cars WHERE id=?',(cid,)).fetchone())
     updated['vistoria_data'], updated['vistoria_validade'] = latest_vistoria(conn, cid, updated.get('vistoria_data'), updated.get('vistoria_validade'))
