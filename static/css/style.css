@@ -829,6 +829,10 @@ body{
 .img-cap:hover{color:var(--accent)}
 .vistoria-img-item{display:flex;flex-direction:column;gap:4px;max-width:90px}
 .vistoria-show-photos{display:none}
+.vistoria-edit-photos{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:16px}
+.vistoria-edit-photo{display:flex;flex-direction:column;gap:8px;min-width:0}
+.vistoria-edit-photo img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--radius-sm)}
+.vistoria-edit-photo .btn{white-space:normal;justify-content:center;overflow-wrap:anywhere}
 
 /* ═══════════════════════════════════════════════
    USERS LIST
@@ -1336,7 +1340,7 @@ body{
   .vistoria-thumb img{width:100%;height:auto;aspect-ratio:4/3}
   .vistoria-thumbs:not(.expanded) .vistoria-img-item:nth-child(n+5){display:none}
   .vistoria-show-photos{display:flex;align-self:flex-start}
-  .vistoria-img-item .img-cap{max-width:none;min-height:44px;display:flex;align-items:center;font-size:.8rem}
+  .vistoria-img-item .img-cap{max-width:none;min-height:32px;font-size:.75rem;line-height:1.4}
   .vistoria-thumb-del{width:32px;height:32px;min-width:44px;min-height:44px;top:0;right:0;opacity:1;background:rgba(0,0,0,.75);font-size:1.2rem}
   .modal{max-width:720px}
   .main-content{padding:28px 24px;max-width:100%}
@@ -1481,7 +1485,9 @@ body{
   .view-header-actions{width:100%}
 }
 @media(max-width:768px){
-  .main-content{width:100%;padding:calc(var(--header-h) + 24px) 16px calc(88px + env(safe-area-inset-bottom))}
+  .main-content{width:100%;padding:calc(var(--header-h) + 24px) 16px calc(120px + env(safe-area-inset-bottom))}
+  html{scroll-padding-top:calc(var(--header-h) + 16px);scroll-padding-bottom:calc(100px + env(safe-area-inset-bottom))}
+  .vistoria-show-photos{scroll-margin-bottom:calc(100px + env(safe-area-inset-bottom))}
   .view-header{gap:16px;margin-bottom:22px}
   .view-heading{width:100%}
   .view-eyebrow{margin-bottom:6px;font-size:.65rem}

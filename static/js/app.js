@@ -332,7 +332,7 @@ async function loadVistorias(){
             const imgs=(v.images||[]).filter(i=>i.file_type!=='document');
             const docs=(v.images||[]).filter(i=>i.file_type==='document');
             const urls=imgs.map(i=>'/uploads/vistorias/'+i.filename);
-            const thumbs=imgs.length?`<div class="vistoria-thumbs" id="vistoriaPhotos-${v.id}">${imgs.map((img,idx)=>`<div class="vistoria-img-item"><span class="vistoria-thumb"><img src="${urls[idx]}" alt="Foto ${idx+1} da vistoria" loading="lazy" onclick='openLightbox(${JSON.stringify(urls)},${idx})'>${canDel?`<button class="vistoria-thumb-del" title="Remover foto" onclick="event.stopPropagation();deleteVistoriaImage(${img.id})">&times;</button>`:''}</span>${canEdit||img.caption?`<div class="img-cap ${img.caption?'filled':''}" onclick="event.stopPropagation();${canEdit?`editImgCaption(${v.id},${img.id},'vist',this)`:''}">${esc(img.caption||'')||'+ legenda'}</div>`:''}</div>`).join('')}</div>${imgs.length>4?`<button type="button" class="btn btn-sm btn-ghost vistoria-show-photos" aria-expanded="false" aria-controls="vistoriaPhotos-${v.id}" onclick="toggleVistoriaPhotos(this,${imgs.length})">Ver todas — ${imgs.length} fotos</button>`:''}`:'';
+const thumbs=imgs.length?`<div class="vistoria-thumbs" id="vistoriaPhotos-${v.id}">${imgs.map((img,idx)=>`<div class="vistoria-img-item"><span class="vistoria-thumb"><img src="${urls[idx]}" alt="Foto ${idx+1} da vistoria" loading="lazy" onclick='openLightbox(${JSON.stringify(urls)},${idx})'></span>${img.caption?`<div class="img-cap ${img.caption?'filled':''}" onclick="event.stopPropagation();${canEdit?`editImgCaption(${v.id},${img.id},'vist',this)`:''}">${esc(img.caption||'')||''}</div>`:''}</div>`).join('')}</div>${imgs.length>4?`<button type="button" class="btn btn-sm btn-ghost vistoria-show-photos" aria-expanded="false" aria-controls="vistoriaPhotos-${v.id}" onclick="toggleVistoriaPhotos(this,${imgs.length})">Ver todas — ${imgs.length} fotos</button>`:''}`:'';
             const docLinks=docs.length?`<div class="vistoria-docs">${docs.map(d=>`<a class="doc-link" href="/uploads/vistorias/${d.filename}" target="_blank">📄 ${esc(d.original_name||'Documento.pdf')}</a>`).join('')}</div>`:'';
             return `<div class="vistoria-card">
                 <div class="vistoria-head"><div class="vistoria-date">🔍 ${formatDate(v.vistoria_data)}</div>${v.validade?`<div class="vistoria-valid">Validade: ${formatDate(v.validade)}</div>`:''}${canEdit?`<button class="btn btn-sm btn-ghost" onclick="openEditVistoria(${v.id})">Editar</button>`:''}${canDel?`<button class="btn btn-sm btn-danger vistoria-del" onclick="deleteVistoria(${v.id})">Excluir</button>`:''}</div>
@@ -376,7 +376,39 @@ function openEditVistoria(id){
     document.getElementById('editVistoriaValidade').value=v.validade||'';
     document.getElementById('editVistoriaObservacao').value=v.observacao||'';
     document.getElementById('editVistoriaThumbs').innerHTML='';
+    renderEditVistoriaPhotos(v);
     openModal('editVistoriaModal');
+}
+function renderEditVistoriaPhotos(v){
+    const container=document.getElementById('editVistoriaExistingPhotos');
+    container.replaceChildren();
+    const images=(v.images||[]).filter(img=>img.file_type!=='document');
+    images.forEach((img,index)=>{
+        const item=document.createElement('div');item.className='vistoria-edit-photo';
+        const photo=document.createElement('img');
+        photo.src='/uploads/vistorias/'+img.filename;photo.alt=`Foto ${index+1}`;
+        const caption=document.createElement('button');caption.type='button';
+        caption.className='btn btn-sm btn-ghost';caption.textContent=img.caption||'Adicionar legenda';
+        caption.onclick=async()=>{
+            const value=prompt('Legenda da foto',img.caption||'');
+            if(value===null)return;
+            try{
+                const r=await fetch('/api/vistoria/images/'+img.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({caption:value})});
+                if(!r.ok)throw new Error('Falha ao salvar legenda');
+                const data=await r.json();img.caption=data.caption;
+                caption.textContent=img.caption||'Adicionar legenda';
+                toast('Legenda salva','success');loadVistorias();
+            }catch(err){toast(err.message,'error')}
+        };
+        item.append(photo,caption);
+        if(hasPerm('can_delete_records')){
+            const remove=document.createElement('button');remove.type='button';
+            remove.className='btn btn-sm btn-danger';remove.textContent='Remover foto';
+            remove.onclick=()=>deleteVistoriaImage(img.id);
+            item.append(remove);
+        }
+        container.append(item);
+    });
 }
 async function submitEditVistoria(e){
     e.preventDefault();
@@ -395,7 +427,14 @@ async function deleteVistoria(id){
 }
 async function deleteVistoriaImage(id){
     if(!confirm('Remover esta foto da vistoria?'))return;
-    try{const r=await fetch('/api/vistoria/images/'+id,{method:'DELETE'});if(!r.ok)throw new Error('Falha');toast('Foto removida','success');loadVistorias()}catch(e){toast(e.message,'error')}
+    try{
+        const r=await fetch('/api/vistoria/images/'+id,{method:'DELETE'});
+        if(!r.ok)throw new Error('Falha');
+        toast('Foto removida','success');
+        await loadVistorias();
+        const v=currentVistorias.find(v=>v.id===Number(document.getElementById('editVistoriaId').value));
+        if(v)renderEditVistoriaPhotos(v);
+    }catch(e){toast(e.message,'error')}
 }
 
 // Users
