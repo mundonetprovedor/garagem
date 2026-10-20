@@ -328,6 +328,9 @@ body{
 .btn-ghost:hover{color:var(--text-primary);background:var(--bg-hover);border-color:var(--border-focus)}
 
 .btn-danger{background:var(--red-subtle);color:var(--red);border:1px solid transparent}
+.btn-success{background:#15803d;color:#fff;border:1px solid transparent}
+.btn-success:hover{background:#166534;color:#fff}
+.btn-success:disabled{opacity:.45;pointer-events:none}
 .btn-danger:hover{background:var(--red);color:#fff;border-color:var(--red)}
 
 .btn-sm{padding:6px 12px;font-size:0.75rem}
