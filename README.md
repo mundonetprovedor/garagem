@@ -242,6 +242,17 @@ As permissões são configuradas por usuário em **Settings → Users → Edit**
 
 ## Backup e restauração
 
+### Carregamento das fotos
+
+As galerias e os cartões usam miniaturas WebP de até 640 pixels. As fotos já
+salvas são otimizadas automaticamente na primeira visualização; os próximos
+acessos reutilizam a miniatura em `UPLOAD_FOLDER/.thumbnails`. Ao ampliar uma
+foto, a aplicação carrega o original sem alteração. Essa pasta de miniaturas
+pode ser reconstruída automaticamente a partir dos originais.
+
+Após atualizar o código, reinstale as dependências (`pip install -r requirements.txt`)
+ou reconstrua a imagem Docker para incluir o Pillow.
+
 ### Backup
 
 ```bash

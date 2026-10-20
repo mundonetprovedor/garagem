@@ -16,6 +16,8 @@
 
 import os, uuid, sqlite3, hashlib, secrets, csv, io, json, re, calendar
 from datetime import date
+from image_thumbnails import cached_thumbnail
+from PIL.Image import DecompressionBombError
 try:
     import fcntl
 except ImportError:  # não-POSIX; somente processo único
@@ -23,7 +25,7 @@ except ImportError:  # não-POSIX; somente processo único
 from functools import wraps
 from flask import (Flask, render_template, request, jsonify,
                    redirect, url_for, session, g, Response, send_from_directory,
-                   has_request_context)
+                   has_request_context, send_file)
 
 APP_VERSION = '0.3.2'
 
@@ -613,7 +615,19 @@ def serve_upload(filename):
     conn.close()
     if not allowed:
         return jsonify({'error': 'Arquivo não encontrado'}), 404
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    if request.args.get('thumbnail') == '1' and not stored_name.endswith('.pdf'):
+        try:
+            thumbnail = cached_thumbnail(app.config['UPLOAD_FOLDER'], folder, stored_name)
+            response = send_file(str(thumbnail.resolve()), mimetype='image/webp', conditional=True)
+        except (OSError, ValueError, DecompressionBombError):
+            app.logger.warning('Não foi possível gerar miniatura de %s', filename)
+            response = send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    else:
+        response = send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    # Permite reusar os bytes com ETag/304, revalidando o acesso a cada pedido.
+    response.headers['Cache-Control'] = 'private, no-cache'
+    response.vary.add('Cookie')
+    return response
 
 @app.route('/login')
 def login_page():
