@@ -545,6 +545,11 @@ body{
 .car-details-panel summary:hover{color:var(--text-primary);background:var(--bg-hover)}
 .car-details-panel summary:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
 .car-details-panel .car-detail-hero{margin-bottom:0;border:0;border-top:1px solid var(--border);border-radius:0}
+.car-overview{display:flex;align-items:center;gap:16px;padding:16px;border-bottom:1px solid var(--border-subtle)}
+.car-overview-photo{width:96px;height:72px;flex-shrink:0;object-fit:cover;border-radius:var(--radius-sm);background:var(--bg-surface);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:.75rem}
+.car-overview-identity{display:flex;flex-wrap:wrap;gap:12px 28px;min-width:0}
+.car-overview-identity .value{overflow-wrap:anywhere}
+.car-extra-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr));gap:20px;padding:18px;border-top:1px solid var(--border-subtle);overflow-wrap:anywhere}
 .car-detail-hero{
   background:var(--bg-card);
   border:1px solid var(--border);

@@ -187,20 +187,41 @@ async function submitEditCar(e){e.preventDefault();const id=document.getElementB
 async function deleteCar(id,name){if(!confirm(`Excluir "${name}"?`))return;try{await fetch('/api/cars/'+id,{method:'DELETE'});toast('Excluído','success');loadCars();loadSidebarCars();loadDashboard();if(currentCarId==id)switchView('garage')}catch(e){toast('Falha','error')}}
 
 async function openCarDetail(carId){currentCarId=carId;try{const r=await fetch('/api/cars/'+carId);const car=await r.json();document.getElementById('carDetailTitle').textContent=`${car.make} ${car.model} ${car.year}`;renderCarHero(car);switchView('car-detail');setActiveSidebarCar(carId);loadMaintenance();loadReminders();loadVistorias()}catch(e){toast('Falha','error')}}
-function renderCarHeroContent(car){document.getElementById('carDetailHero').innerHTML=`${car.image?`<img src="/uploads/cars/${car.image}" alt="">`:'<div class="placeholder-img"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M5 17h14M5 17a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2"/><circle cx="7.5" cy="17" r="2.5"/><circle cx="16.5" cy="17" r="2.5"/></svg></div>'}<div class="detail-meta"><div class="detail-meta-row"><div class="detail-meta-item"><span class="label">Ano</span><span class="value">${car.year}</span></div><div class="detail-meta-item"><span class="label">Marca</span><span class="value">${esc(car.make)}</span></div><div class="detail-meta-item"><span class="label">Modelo</span><span class="value">${esc(car.model)}</span></div></div><div class="detail-meta-row">${car.placa?`<div class="detail-meta-item"><span class="label">Placa</span><span class="value mono">${esc(car.placa)}</span></div>`:''}${car.renavam?`<div class="detail-meta-item"><span class="label">RENAVAM</span><span class="value mono">${esc(car.renavam)}</span></div>`:''}${car.chassi?`<div class="detail-meta-item"><span class="label">Chassi</span><span class="value mono">${esc(car.chassi)}</span></div>`:''}${car.condutor?`<div class="detail-meta-item"><span class="label">Principal Condutor</span><span class="value">${esc(car.condutor)}</span></div>`:''}${car.licenciamento?`<div class="detail-meta-item"><span class="label">Licenciamento</span><span class="value">${formatDate(car.licenciamento)}</span></div>`:''}${car.ipva?`<div class="detail-meta-item"><span class="label">IPVA</span><span class="value">${formatDate(car.ipva)}</span></div>`:''}${car.combustivel?`<div class="detail-meta-item"><span class="label">Combustível</span><span class="value">${esc(car.combustivel)}</span></div>`:''}${car.crv?`<div class="detail-meta-item"><span class="label">CRV</span><span class="value mono">${esc(car.crv)}</span></div>`:''}${car.crlv?`<div class="detail-meta-item"><span class="label">CRLV</span><span class="value">${formatDate(car.crlv)}</span></div>`:''}${car.seguro?`<div class="detail-meta-item"><span class="label">Seguro</span><span class="value">${formatDate(car.seguro)}</span></div>`:''}${car.vistoria_data?`<div class="detail-meta-item"><span class="label">Última Vistoria</span><span class="value">${formatDate(car.vistoria_data)}</span></div>`:''}${car.vistoria_validade?`<div class="detail-meta-item"><span class="label">Validade da Vistoria</span><span class="value">${formatDate(car.vistoria_validade)}</span></div>`:''}${car.km_atual!=null?`<div class="detail-meta-item"><span class="label">KM Atual</span><span class="value">${Number(car.km_atual).toLocaleString()}</span></div>`:''}${car.purchase_date?`<div class="detail-meta-item"><span class="label">Comprado em</span><span class="value">${formatDate(car.purchase_date)}</span></div>`:''}</div></div>`}
 function renderCarHero(car){
-    renderCarHeroContent(car);
     const container=document.getElementById('carDetailHero');
+    const overview=document.createElement('div');
+    overview.className='car-overview';
+    const photo=document.createElement(car.image?'img':'div');
+    photo.className='car-overview-photo';
+    if(car.image){photo.src='/uploads/cars/'+encodeURIComponent(car.image);photo.alt='Foto do veículo'}
+    else{photo.textContent='Sem foto'}
+    const identity=document.createElement('div');
+    identity.className='car-overview-identity';
+    function addField(parent,label,value){
+        const item=document.createElement('div');item.className='detail-meta-item';
+        const name=document.createElement('span');name.className='label';name.textContent=label;
+        const text=document.createElement('span');text.className='value';text.textContent=value;
+        item.append(name,text);parent.append(item);
+    }
+    addField(identity,'Placa',car.placa||'Não informada');
+    addField(identity,'Motorista',car.condutor||'Não informado');
+    overview.append(photo,identity);
     const details=document.createElement('details');
-    const summary=document.createElement('summary');
-    summary.textContent='Dados do veículo';
-    const content=document.createElement('div');
-    content.className='car-detail-hero';
-    while(container.firstChild)content.appendChild(container.firstChild);
+    const summary=document.createElement('summary');summary.textContent='Mais dados do veículo';
+    const content=document.createElement('div');content.className='car-extra-fields';
+    const fields=[['Ano',car.year],['Marca',car.make],['Modelo',car.model],
+        ['RENAVAM',car.renavam],['Chassi',car.chassi],['Combustível',car.combustivel],
+        ['CRV',car.crv],['Licenciamento',car.licenciamento,true],['IPVA',car.ipva,true],
+        ['CRLV',car.crlv,true],['Seguro',car.seguro,true],['Última vistoria',car.vistoria_data,true],
+        ['Validade da vistoria',car.vistoria_validade,true],['KM atual',car.km_atual],
+        ['Comprado em',car.purchase_date,true]];
+    fields.forEach(([label,value,isDate])=>{
+        if(value!==null&&value!==undefined&&value!=='')
+            addField(content,label,isDate?formatDate(value):label==='KM atual'?Number(value).toLocaleString('pt-BR'):value);
+    });
     details.append(summary,content);
-    container.replaceChildren(details);
+    container.replaceChildren(overview,details);
 }
-function exportCarCSV(){if(currentCarId)window.location.href='/api/cars/'+currentCarId+'/export'}
 function openImportForCar(){openModal('settingsModal');switchSettingsTab('import');setTimeout(()=>{document.getElementById('importCarSelect').value=currentCarId},200)}
 
 // Maintenance
