@@ -1,4 +1,4 @@
-let currentCarId=null,lightboxImages=[],lightboxIndex=0,userSettings={dashboard_range:'all',show_vehicles:true,show_records:true,show_cost:true,show_due:true,theme:'dark'};
+let currentCarId=null,lightboxImages=[],lightboxIndex=0,currentVistorias=[],userSettings={dashboard_range:'all',show_vehicles:true,show_records:true,show_cost:true,show_due:true,theme:'dark'};
 const PERM_LABELS={can_add_cars:'Adicionar veículos',can_edit_cars:'Editar veículos',can_delete_cars:'Excluir veículos',can_add_records:'Adicionar registros',can_edit_records:'Editar registros',can_delete_records:'Excluir registros',can_import:'Importar CSV',can_export:'Exportar CSV'};
 
 document.addEventListener('DOMContentLoaded',()=>{
@@ -291,7 +291,9 @@ async function loadVistorias(){
         const r=await fetch('/api/cars/'+currentCarId+'/vistorias');
         const rows=await r.json();
         if(!r.ok){list.innerHTML='<p class="empty-text">Falha ao carregar as vistorias.</p>';return}
+        currentVistorias=rows;
         if(!rows.length){list.innerHTML='<p class="empty-text">Nenhuma vistoria registrada ainda.</p>';return}
+        const canEdit=hasPerm('can_edit_records');
         const canDel=hasPerm('can_delete_records');
         list.innerHTML=rows.map(v=>{
             const imgs=(v.images||[]).filter(i=>i.file_type!=='document');
@@ -300,7 +302,7 @@ async function loadVistorias(){
             const thumbs=imgs.length?`<div class="vistoria-thumbs">${imgs.map((img,idx)=>`<div class="vistoria-img-item"><span class="vistoria-thumb"><img src="${urls[idx]}" alt="" loading="lazy" onclick='openLightbox(${JSON.stringify(urls)},${idx})'>${canDel?`<button class="vistoria-thumb-del" title="Remover foto" onclick="event.stopPropagation();deleteVistoriaImage(${img.id})">&times;</button>`:''}</span>${canDel||img.caption?`<div class="img-cap ${img.caption?'filled':''}" onclick="event.stopPropagation();${canDel?`editImgCaption(${v.id},${img.id},'vist',this)`:''}">${esc(img.caption||'')||'+ legenda'}</div>`:''}</div>`).join('')}</div>`:'';
             const docLinks=docs.length?`<div class="vistoria-docs">${docs.map(d=>`<a class="doc-link" href="/uploads/vistorias/${d.filename}" target="_blank">📄 ${esc(d.original_name||'Documento.pdf')}</a>`).join('')}</div>`:'';
             return `<div class="vistoria-card">
-                <div class="vistoria-head"><div class="vistoria-date">🔍 ${formatDate(v.vistoria_data)}</div>${v.validade?`<div class="vistoria-valid">Validade: ${formatDate(v.validade)}</div>`:''}${canDel?`<button class="btn btn-sm btn-danger vistoria-del" onclick="deleteVistoria(${v.id})">Excluir</button>`:''}</div>
+                <div class="vistoria-head"><div class="vistoria-date">🔍 ${formatDate(v.vistoria_data)}</div>${v.validade?`<div class="vistoria-valid">Validade: ${formatDate(v.validade)}</div>`:''}${canEdit?`<button class="btn btn-sm btn-ghost" onclick="openEditVistoria(${v.id})">Editar</button>`:''}${canDel?`<button class="btn btn-sm btn-danger vistoria-del" onclick="deleteVistoria(${v.id})">Excluir</button>`:''}</div>
                 ${v.observacao?`<div class="vistoria-notes">${esc(v.observacao)}</div>`:''}
                 ${thumbs}${docLinks}
             </div>`;
@@ -322,6 +324,29 @@ async function submitVistoria(e){
         toast('Vistoria registrada!','success');
         e.target.reset();document.getElementById('vistoriaThumbs').innerHTML='';
         closeModal('addVistoriaModal');loadVistorias();refreshCarHero();
+    }catch(err){toast(err.message,'error')}finally{b.disabled=false;b.textContent='Salvar'}
+}
+function openEditVistoria(id){
+    const v=currentVistorias.find(item=>item.id===id);
+    if(!v)return;
+    const f=document.getElementById('editVistoriaForm');
+    f.reset();
+    document.getElementById('editVistoriaId').value=v.id;
+    document.getElementById('editVistoriaData').value=v.vistoria_data||'';
+    document.getElementById('editVistoriaValidade').value=v.validade||'';
+    document.getElementById('editVistoriaObservacao').value=v.observacao||'';
+    document.getElementById('editVistoriaThumbs').innerHTML='';
+    openModal('editVistoriaModal');
+}
+async function submitEditVistoria(e){
+    e.preventDefault();
+    const id=document.getElementById('editVistoriaId').value;
+    const b=document.getElementById('editVistoriaBtn');b.disabled=true;b.textContent='Salvando…';
+    try{
+        const r=await fetch('/api/vistorias/'+id,{method:'PUT',body:new FormData(e.target)});
+        if(!r.ok){let m='Falha';try{m=(await r.json()).error}catch(x){}throw new Error(m)}
+        toast('Vistoria atualizada','success');
+        closeModal('editVistoriaModal');loadVistorias();refreshCarHero();
     }catch(err){toast(err.message,'error')}finally{b.disabled=false;b.textContent='Salvar'}
 }
 async function deleteVistoria(id){

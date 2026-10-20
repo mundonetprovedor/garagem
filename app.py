@@ -1162,6 +1162,28 @@ def add_vistoria(cid):
     conn.close()
     return jsonify(row), 201
 
+@app.route('/api/vistorias/<int:vid>', methods=['PUT'])
+@perm_required('can_edit_records')
+def update_vistoria(vid):
+    conn = get_db()
+    vistoria = conn.execute('SELECT * FROM vistorias WHERE id=?', (vid,)).fetchone()
+    if not vistoria: conn.close(); return jsonify({'error':'Não encontrado'}), 404
+    if not can_access_car(conn, vistoria['car_id'], g.user): conn.close(); return jsonify({'error':'Sem permissão'}), 403
+    vd = request.form.get('vistoria_data', vistoria['vistoria_data']).strip()
+    val = request.form.get('validade', vistoria['validade'] or '').strip()
+    obs = request.form.get('observacao', vistoria['observacao'] or '').strip()
+    conn.execute('UPDATE vistorias SET vistoria_data=?, validade=?, observacao=? WHERE id=?',
+                 (vd, val or None, obs or None, vid))
+    for f in request.files.getlist('gallery'):
+        fn = save_upload(f, 'vistorias')
+        if fn: conn.execute('INSERT INTO vistoria_images (vistoria_id,filename,original_name,file_type) VALUES (?,?,?,?)',
+                            (vid, fn, f.filename, get_file_type(fn)))
+    conn.commit()
+    row = dict(conn.execute('SELECT * FROM vistorias WHERE id=?', (vid,)).fetchone())
+    row['images'] = [dict(i) for i in conn.execute('SELECT * FROM vistoria_images WHERE vistoria_id=? ORDER BY created_at', (vid,)).fetchall()]
+    conn.close()
+    return jsonify(row)
+
 @app.route('/api/vistorias/<int:vid>', methods=['DELETE'])
 @perm_required('can_delete_records')
 def delete_vistoria(vid):
