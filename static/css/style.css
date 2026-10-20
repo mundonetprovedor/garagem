@@ -818,6 +818,7 @@ body{
 .img-cap:not(.filled){color:var(--text-muted)}
 .img-cap:hover{color:var(--accent)}
 .vistoria-img-item{display:flex;flex-direction:column;gap:4px;max-width:90px}
+.vistoria-show-photos{display:none}
 
 /* ═══════════════════════════════════════════════
    USERS LIST
@@ -1315,6 +1316,19 @@ body{
    RESPONSIVE — TABLET (≤1024px)
    ═══════════════════════════════════════════════ */
 @media(max-width:1024px){
+  .btn,.modal-close{min-height:44px;min-width:44px}
+  .vistoria-head{gap:10px}
+  .vistoria-date{flex-basis:100%}
+  .vistoria-head .vistoria-del{margin-left:auto}
+  .vistoria-thumbs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .vistoria-img-item{max-width:none;min-width:0}
+  .vistoria-thumb{display:block}
+  .vistoria-thumb img{width:100%;height:auto;aspect-ratio:4/3}
+  .vistoria-thumbs:not(.expanded) .vistoria-img-item:nth-child(n+5){display:none}
+  .vistoria-show-photos{display:flex;align-self:flex-start}
+  .vistoria-img-item .img-cap{max-width:none;min-height:44px;display:flex;align-items:center;font-size:.8rem}
+  .vistoria-thumb-del{width:32px;height:32px;min-width:44px;min-height:44px;top:0;right:0;opacity:1;background:rgba(0,0,0,.75);font-size:1.2rem}
+  .modal{max-width:720px}
   .main-content{padding:28px 24px;max-width:100%}
   .car-grid{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
   .stats-grid{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
@@ -1407,4 +1421,28 @@ body{
   .thumb-del{opacity:1}
   .reminder-card{flex-wrap:wrap}
   .reminder-meta{min-width:0;text-align:left}
+}
+
+/* Formulários móveis: conteúdo rolável entre cabeçalho e ações fixas. */
+@media(max-width:768px){
+  .modal:has(>form){
+    display:flex;flex-direction:column;
+    height:100vh;height:100dvh;max-height:100dvh;max-width:100%;
+    border-radius:0;margin:0;overflow:hidden;
+  }
+  .modal:has(>form)::before{display:none}
+  .modal:has(>form)>.modal-header{
+    flex-shrink:0;padding:calc(12px + env(safe-area-inset-top)) 16px 12px;
+    border-bottom:1px solid var(--border-subtle);
+  }
+  .modal:has(>form)>form{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+  .modal:has(>form)>form>.form-grid{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:0}
+  .modal:has(>form)>form>.modal-actions{
+    position:static;flex-shrink:0;flex-direction:row;
+    padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+  .form-group input,.form-group textarea,.form-group select{font-size:16px}
+  .reminders-header .btn-sm,.reminder-actions .btn-sm{min-height:44px;min-width:44px}
+  .reminders-header .btn-sm .btn-label{display:inline}
+  .vistoria-thumbs .vistoria-thumb img{width:100%;height:auto}
 }

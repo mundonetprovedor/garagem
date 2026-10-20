@@ -299,7 +299,7 @@ async function loadVistorias(){
             const imgs=(v.images||[]).filter(i=>i.file_type!=='document');
             const docs=(v.images||[]).filter(i=>i.file_type==='document');
             const urls=imgs.map(i=>'/uploads/vistorias/'+i.filename);
-            const thumbs=imgs.length?`<div class="vistoria-thumbs">${imgs.map((img,idx)=>`<div class="vistoria-img-item"><span class="vistoria-thumb"><img src="${urls[idx]}" alt="" loading="lazy" onclick='openLightbox(${JSON.stringify(urls)},${idx})'>${canDel?`<button class="vistoria-thumb-del" title="Remover foto" onclick="event.stopPropagation();deleteVistoriaImage(${img.id})">&times;</button>`:''}</span>${canDel||img.caption?`<div class="img-cap ${img.caption?'filled':''}" onclick="event.stopPropagation();${canDel?`editImgCaption(${v.id},${img.id},'vist',this)`:''}">${esc(img.caption||'')||'+ legenda'}</div>`:''}</div>`).join('')}</div>`:'';
+            const thumbs=imgs.length?`<div class="vistoria-thumbs" id="vistoriaPhotos-${v.id}">${imgs.map((img,idx)=>`<div class="vistoria-img-item"><span class="vistoria-thumb"><img src="${urls[idx]}" alt="Foto ${idx+1} da vistoria" loading="lazy" onclick='openLightbox(${JSON.stringify(urls)},${idx})'>${canDel?`<button class="vistoria-thumb-del" title="Remover foto" onclick="event.stopPropagation();deleteVistoriaImage(${img.id})">&times;</button>`:''}</span>${canEdit||img.caption?`<div class="img-cap ${img.caption?'filled':''}" onclick="event.stopPropagation();${canEdit?`editImgCaption(${v.id},${img.id},'vist',this)`:''}">${esc(img.caption||'')||'+ legenda'}</div>`:''}</div>`).join('')}</div>${imgs.length>4?`<button type="button" class="btn btn-sm btn-ghost vistoria-show-photos" aria-expanded="false" aria-controls="vistoriaPhotos-${v.id}" onclick="toggleVistoriaPhotos(this,${imgs.length})">Ver todas — ${imgs.length} fotos</button>`:''}`:'';
             const docLinks=docs.length?`<div class="vistoria-docs">${docs.map(d=>`<a class="doc-link" href="/uploads/vistorias/${d.filename}" target="_blank">📄 ${esc(d.original_name||'Documento.pdf')}</a>`).join('')}</div>`:'';
             return `<div class="vistoria-card">
                 <div class="vistoria-head"><div class="vistoria-date">🔍 ${formatDate(v.vistoria_data)}</div>${v.validade?`<div class="vistoria-valid">Validade: ${formatDate(v.validade)}</div>`:''}${canEdit?`<button class="btn btn-sm btn-ghost" onclick="openEditVistoria(${v.id})">Editar</button>`:''}${canDel?`<button class="btn btn-sm btn-danger vistoria-del" onclick="deleteVistoria(${v.id})">Excluir</button>`:''}</div>
@@ -308,6 +308,13 @@ async function loadVistorias(){
             </div>`;
         }).join('');
     }catch(e){console.error(e)}
+}
+function toggleVistoriaPhotos(button,count){
+    const gallery=document.getElementById(button.getAttribute('aria-controls'));
+    const expanded=button.getAttribute('aria-expanded')!=='true';
+    gallery.classList.toggle('expanded',expanded);
+    button.setAttribute('aria-expanded',String(expanded));
+    button.textContent=expanded?'Mostrar menos':`Ver todas — ${count} fotos`;
 }
 function openAddVistoriaModal(){
     const f=document.getElementById('addVistoriaForm');f.reset();
